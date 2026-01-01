@@ -1,0 +1,31 @@
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Logs / outputs
+*.log
+*.out
+
+# MinerU raw (默认会自动清理，但保守起见忽略）
+ref_mineru/_raw/
+
+# API keys (NEVER commit)
+tools/.gemini_api_key
+.apikey.env
+
+# Local notes logs / raw responses
+notes_mineru/_raw/
+notes_mineru/_progress.jsonl
+
+# PDFs / large sources (project data, usually not suitable for Git)
+*.pdf
+开题报告文献/
+英文文献期刊/
+
+
+
