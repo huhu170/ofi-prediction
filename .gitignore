@@ -15,7 +15,6 @@ venv/
 ref_mineru/_raw/
 
 # API keys (NEVER commit)
-tools/.gemini_api_key
 .apikey.env
 
 # Local notes logs / raw responses

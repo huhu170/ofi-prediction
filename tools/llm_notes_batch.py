@@ -412,6 +412,44 @@ def _mk_fix_messages(paper_id: str, source_md: str, noterules: str, bad_output: 
     )
     return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 
+
+def _mk_fix_messages_with_reason(
+    paper_id: str, source_md: str, noterules: str, bad_output: str, reason: str
+) -> list[dict]:
+    """
+    三次纠错：带上失败原因（缺哪个 section / 证据不足等），要求模型“严格补齐”。
+    """
+    system = (
+        "你是一个严谨的“论文写作与文献笔记助手”。\n"
+        "你必须严格按用户给定的模板输出；不要输出思考过程；不要输出任何额外章节。\n"
+        "输出必须是 Markdown，不要输出 JSON，不要输出代码块。\n"
+        "注意：你的输出会被程序做严格校验，缺任何章节或证据条目都会被判定失败。\n"
+    )
+    user = (
+        f"你上一次的输出不合规，失败原因：{reason}\n"
+        "请严格按 noterules.md 的结构输出四个部分，并确保 Evidence Items 至少 8 条。\n"
+        "禁止输出任何“解释/思考过程/方法论”，只输出最终笔记正文。\n\n"
+        f"硬性要求：输出第一行必须是 `# {paper_id}`。\n"
+        "并且必须包含下面四个二级标题（标题文字必须一致）：\n"
+        "- ## 1）元数据卡（Metadata Card）\n"
+        "- ## 2）可追溯证据条目（Evidence Items）\n"
+        "- ## 3）主题笔记（Topic Notes）\n"
+        "- ## 4）可直接写进论文的句子草稿（可选）\n\n"
+        "补充提醒：所有数字/对比/因果必须有逐字短引支撑，否则写【未核验】或不写。\n\n"
+        "【noterules.md】\n"
+        "-----BEGIN_NOTERULES-----\n"
+        + (noterules or "")
+        + "\n-----END_NOTERULES-----\n\n"
+        "【上一次不合规输出（仅供你避免重复错误）】\n"
+        "-----BEGIN_BAD_OUTPUT-----\n"
+        + (bad_output or "")
+        + "\n-----END_BAD_OUTPUT-----\n\n"
+        "【原文】\n"
+        "-----BEGIN_REF_MD-----\n"
+        + source_md
+        + "\n-----END_REF_MD-----\n"
+    )
+    return [{"role": "system", "content": system}, {"role": "user", "content": user}]
 def main() -> int:
     _setup_utf8_stdio()
 
@@ -431,7 +469,9 @@ def main() -> int:
     ap.add_argument("--timeout", type=int, default=180, help="单次请求超时秒数（默认 180）")
     args = ap.parse_args()
 
-    _load_env_file((REPO_ROOT / args.env_file).resolve(), override=True)
+    # 读取 .env 作为默认值，但不覆盖用户已经在环境变量中显式设置的值
+    # 这样用户在系统环境变量里改 MODEL/URL/API_KEY 会立即生效
+    _load_env_file((REPO_ROOT / args.env_file).resolve(), override=False)
 
     # 兼容火山方舟示例命名（不强制要求用户使用）
     if (os.environ.get("API_KEY") or "").strip() and not (os.environ.get("ARK_API_KEY") or "").strip():
@@ -510,7 +550,21 @@ def main() -> int:
                 note_md = _extract_note_block(paper_id, raw2 or "")
                 ok_struct, reason = _validate_note_md(paper_id, note_md)
                 if not ok_struct:
-                    raise RuntimeError(f"笔记结构不符合 noterules 模板：{reason}")
+                    # 三次纠错：带失败原因再试一次
+                    fix_msgs2 = _mk_fix_messages_with_reason(
+                        paper_id, src_md, noterules, note_md[:4000], reason
+                    )
+                    raw3 = _retry(lambda: _llm_generate(cfg, fix_msgs2))
+                    raw_path.write_text(
+                        (raw_path.read_text(encoding="utf-8", errors="replace") + "\n\n" + (raw3 or "")).strip()
+                        + "\n",
+                        encoding="utf-8",
+                        newline="\n",
+                    )
+                    note_md = _extract_note_block(paper_id, raw3 or "")
+                    ok_struct, reason = _validate_note_md(paper_id, note_md)
+                    if not ok_struct:
+                        raise RuntimeError(f"笔记结构不符合 noterules 模板：{reason}")
 
             # 仅做结构校验，不改写内容；通过则原样落盘
             note_path.write_text(note_md + "\n", encoding="utf-8", newline="\n")
