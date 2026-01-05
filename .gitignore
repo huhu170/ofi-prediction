@@ -13,6 +13,7 @@ venv/
 
 # MinerU raw (默认会自动清理，但保守起见忽略）
 ref_mineru/_raw/
+ref_mineru/index.jsonl
 
 # API keys (NEVER commit)
 .apikey.env
