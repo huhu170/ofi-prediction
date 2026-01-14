@@ -27,5 +27,13 @@ notes_mineru/_progress.jsonl
 开题报告文献/
 英文文献期刊/
 
+# Data files (too large for Git)
+data/raw/*
+data/processed/*
+data/models/*
+# data/postgres/ moved to D:/ofi_data/postgres (outside project)
+!data/**/.gitkeep
+*.parquet
+
 
 
