@@ -1,0 +1,10 @@
+{
+  "model_name": "LSTM",
+  "total_return": -0.000274863898446667,
+  "annual_return": -0.13872016098326845,
+  "sharpe_ratio": -0.012302117352743256,
+  "max_drawdown": 0.28158721400311776,
+  "win_rate": 0,
+  "total_trades": 1,
+  "profit_factor": Infinity
+}

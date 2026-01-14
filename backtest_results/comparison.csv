@@ -1,0 +1,3 @@
+Model,Return,Sharpe,MaxDD,WinRate,Trades
+TRANSFORMER,0.00%,0.00,0.00%,0.0%,0
+LSTM,-0.03%,-0.01,28.16%,0.0%,1
