@@ -62,6 +62,13 @@ try:
 except ImportError:
     HAS_XGB = False
 
+# statsmodels（ARIMA）
+try:
+    from statsmodels.tsa.arima.model import ARIMA
+    HAS_STATSMODELS = True
+except ImportError:
+    HAS_STATSMODELS = False
+
 HAS_ML = HAS_SKLEARN
 
 # ============================================================
@@ -639,6 +646,7 @@ if HAS_SKLEARN:
         
         def __init__(self):
             self.models = {}
+            self.arima_threshold = None  # ARIMA分类阈值
         
         def train_logistic(self, X_train: np.ndarray, y_train: np.ndarray):
             """训练逻辑回归"""
@@ -693,15 +701,158 @@ if HAS_SKLEARN:
             self.models['rf'] = model
             return model
         
+        def train_arima(self, X_train: np.ndarray, y_train: np.ndarray):
+            """
+            训练ARIMA基准模型
+            
+            ARIMA用于预测时间序列的下一步值，然后转换为三分类:
+            - 使用序列最后几个时间步的趋势作为预测
+            - 基于预测值的正负和幅度进行分类
+            
+            注意: 这是一个简化的ARIMA基准，主要用于对比
+            """
+            if not HAS_STATSMODELS:
+                print("  [WARN] statsmodels未安装，使用简化版ARIMA")
+            
+            # 提取趋势特征用于预测（使用第一个特征，通常是收益率相关）
+            # 计算每个样本的趋势（最后5个时间步的平均变化）
+            trends = []
+            for i in range(len(X_train)):
+                seq = X_train[i, :, 0]  # 取第一个特征
+                # 计算最后5个时间步的变化趋势
+                last_changes = np.diff(seq[-6:])  # 最后5个变化
+                trend = np.mean(last_changes)
+                trends.append(trend)
+            
+            trends = np.array(trends)
+            
+            # 学习最优阈值将趋势转换为分类
+            # 使用训练集的趋势分布来确定阈值
+            sorted_trends = np.sort(trends)
+            n = len(sorted_trends)
+            
+            # 使用分位数作为阈值
+            lower_threshold = np.percentile(trends, 33)
+            upper_threshold = np.percentile(trends, 67)
+            
+            # 存储阈值供预测使用
+            self.arima_threshold = (lower_threshold, upper_threshold)
+            self.models['arima'] = 'trend_based'
+            
+            print(f"    ARIMA阈值: 下={lower_threshold:.6f}, 上={upper_threshold:.6f}")
+            
+            return self.models['arima']
+        
         def predict(self, model_name: str, X: np.ndarray) -> np.ndarray:
             """预测"""
+            if model_name == 'arima':
+                return self._predict_arima(X)
+            
             X_flat = X.reshape(X.shape[0], -1)
             return self.models[model_name].predict(X_flat)
         
         def predict_proba(self, model_name: str, X: np.ndarray) -> np.ndarray:
             """预测概率"""
+            if model_name == 'arima':
+                return self._predict_arima_proba(X)
+            
             X_flat = X.reshape(X.shape[0], -1)
             return self.models[model_name].predict_proba(X_flat)
+        
+        def _predict_arima(self, X: np.ndarray) -> np.ndarray:
+            """ARIMA预测"""
+            lower_th, upper_th = self.arima_threshold
+            
+            predictions = []
+            for i in range(len(X)):
+                seq = X[i, :, 0]
+                last_changes = np.diff(seq[-6:])
+                trend = np.mean(last_changes)
+                
+                # 基于趋势分类
+                if trend < lower_th:
+                    pred = 0  # 下跌
+                elif trend > upper_th:
+                    pred = 2  # 上涨
+                else:
+                    pred = 1  # 平稳
+                
+                predictions.append(pred)
+            
+            return np.array(predictions)
+        
+        def _predict_arima_proba(self, X: np.ndarray) -> np.ndarray:
+            """ARIMA预测概率（基于趋势的软分类）"""
+            lower_th, upper_th = self.arima_threshold
+            
+            probas = []
+            for i in range(len(X)):
+                seq = X[i, :, 0]
+                last_changes = np.diff(seq[-6:])
+                trend = np.mean(last_changes)
+                
+                # 使用sigmoid软化分类边界
+                # 计算相对位置
+                if trend < lower_th:
+                    # 偏向下跌
+                    down_prob = 0.6 + 0.3 * min(1, (lower_th - trend) / max(abs(lower_th), 1e-6))
+                    up_prob = 0.1
+                    stable_prob = 1 - down_prob - up_prob
+                elif trend > upper_th:
+                    # 偏向上涨
+                    up_prob = 0.6 + 0.3 * min(1, (trend - upper_th) / max(abs(upper_th), 1e-6))
+                    down_prob = 0.1
+                    stable_prob = 1 - down_prob - up_prob
+                else:
+                    # 偏向平稳
+                    stable_prob = 0.5
+                    down_prob = 0.25
+                    up_prob = 0.25
+                
+                probas.append([down_prob, stable_prob, up_prob])
+            
+            return np.array(probas)
+        
+        def save_model(self, model_name: str, output_dir: Path):
+            """保存ML模型"""
+            output_dir = Path(output_dir)
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            if model_name == 'arima':
+                # ARIMA只保存阈值参数
+                params = {
+                    'model_type': 'arima',
+                    'threshold': self.arima_threshold
+                }
+                with open(output_dir / 'model.pkl', 'wb') as f:
+                    pickle.dump(params, f)
+            elif model_name in self.models:
+                # 保存sklearn/xgboost模型
+                params = {
+                    'model_type': model_name,
+                    'model': self.models[model_name]
+                }
+                with open(output_dir / 'model.pkl', 'wb') as f:
+                    pickle.dump(params, f)
+            
+            print(f"    模型已保存: {output_dir / 'model.pkl'}")
+        
+        @classmethod
+        def load_model(cls, model_path: Path):
+            """加载ML模型"""
+            with open(model_path, 'rb') as f:
+                params = pickle.load(f)
+            
+            instance = cls()
+            model_type = params['model_type']
+            
+            if model_type == 'arima':
+                instance.arima_threshold = params['threshold']
+                instance.models['arima'] = 'trend_based'
+            else:
+                instance.models[model_type] = params['model']
+            
+            return instance, model_type
 
 
 # ============================================================
@@ -1167,12 +1318,16 @@ def main():
         X_test, y_test = splits['test']
         
         for ml_name, train_func in [
+            ('arima', ml_baselines.train_arima),
             ('logistic', ml_baselines.train_logistic),
             ('xgboost', ml_baselines.train_xgboost),
             ('rf', ml_baselines.train_rf)
         ]:
             print(f"\n  训练 {ml_name}...")
-            train_func(X_train, y_train)
+            result = train_func(X_train, y_train)
+            
+            if result is None:
+                continue
             
             y_pred = ml_baselines.predict(ml_name, X_test)
             y_prob = ml_baselines.predict_proba(ml_name, X_test)
@@ -1180,6 +1335,15 @@ def main():
             metrics = evaluator.compute_metrics(y_test, y_pred, y_prob)
             evaluator.print_metrics(metrics, ml_name.upper())
             all_results[ml_name] = metrics
+            
+            # 保存ML模型
+            ml_output_dir = Path(args.output) / ml_name
+            ml_baselines.save_model(ml_name, ml_output_dir)
+            
+            # 保存指标
+            with open(ml_output_dir / 'metrics.json', 'w') as f:
+                save_metrics = {k: v for k, v in metrics.items() if k != 'classification_report'}
+                json.dump(save_metrics, f, indent=2)
     
     # 对比结果
     if args.compare or len(all_results) > 1:

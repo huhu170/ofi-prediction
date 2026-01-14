@@ -144,7 +144,7 @@ class BacktestResult:
 
 class SignalGenerator:
     """
-    交易信号生成器
+    交易信号生成器（深度学习模型）
     
     基于模型预测生成交易信号
     """
@@ -194,6 +194,38 @@ class SignalGenerator:
             confidences.extend(pred_confidences)
         
         return np.array(signals), np.array(confidences)
+
+
+class MLSignalGenerator:
+    """
+    交易信号生成器（ML模型）
+    
+    基于ML模型预测生成交易信号
+    """
+    
+    def __init__(self, ml_instance, model_name: str):
+        self.ml_instance = ml_instance
+        self.model_name = model_name
+    
+    def generate_signals(self, features: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        批量生成信号
+        
+        Args:
+            features: 特征数据 (N, seq_len, num_features)
+            
+        Returns:
+            signals: 信号数组 (N,) - 0=SELL, 1=HOLD, 2=BUY
+            confidences: 置信度数组 (N,)
+        """
+        # 获取预测
+        predictions = self.ml_instance.predict(self.model_name, features)
+        probabilities = self.ml_instance.predict_proba(self.model_name, features)
+        
+        # 提取置信度
+        confidences = probabilities.max(axis=1)
+        
+        return predictions, confidences
 
 
 # ============================================================
@@ -609,7 +641,7 @@ def print_backtest_result(result: BacktestResult):
 # ============================================================
 
 def load_model_for_backtest(model_name: str, input_dim: int = 25, seq_len: int = 100):
-    """加载模型用于回测"""
+    """加载深度学习模型用于回测"""
     sys.path.insert(0, str(Path(__file__).parent))
     import importlib.util
     spec = importlib.util.spec_from_file_location("model_trainer", Path(__file__).parent / "13_model_trainer.py")
@@ -629,6 +661,29 @@ def load_model_for_backtest(model_name: str, input_dim: int = 25, seq_len: int =
     model.eval()
     
     return model
+
+
+def load_ml_model_for_backtest(model_name: str):
+    """加载ML模型用于回测"""
+    sys.path.insert(0, str(Path(__file__).parent))
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("model_trainer", Path(__file__).parent / "13_model_trainer.py")
+    model_trainer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(model_trainer)
+    MLBaselines = model_trainer.MLBaselines
+    
+    model_path = MODEL_DIR / model_name / 'model.pkl'
+    
+    if not model_path.exists():
+        raise FileNotFoundError(f"ML模型文件不存在: {model_path}")
+    
+    ml_instance, ml_type = MLBaselines.load_model(model_path)
+    return ml_instance, ml_type
+
+
+# ML模型列表
+ML_MODELS = ['arima', 'logistic', 'xgboost', 'rf']
+DL_MODELS = ['lstm', 'gru', 'deeplob', 'transformer', 'smart_trans']
 
 
 def run_backtest(
@@ -653,6 +708,9 @@ def run_backtest(
     print(f"  回测模型: {model_name.upper()}")
     print("="*60)
     
+    # 判断模型类型
+    is_ml_model = model_name.lower() in ML_MODELS
+    
     # 加载数据
     print("\n[1] 加载数据...")
     dataset_dir = data_dir / f'dataset_T{seq_len}_k20'
@@ -661,6 +719,7 @@ def run_backtest(
     y_test = np.load(dataset_dir / 'y_test.npy')
     
     print(f"  测试集: {len(X_test)} 样本")
+    print(f"  模型类型: {'ML' if is_ml_model else 'DL'}")
     
     # 加载标准化器
     import pickle
@@ -687,14 +746,26 @@ def run_backtest(
     X_test = X_test[:min_len]
     timestamps = timestamps[:min_len]
     
-    # 加载模型
+    # 加载模型并生成信号
     print("\n[2] 加载模型...")
-    model = load_model_for_backtest(model_name, input_dim=X_test.shape[2], seq_len=seq_len)
     
-    # 生成信号
-    print("\n[3] 生成交易信号...")
-    signal_gen = SignalGenerator(model, scaler_params, seq_len)
-    signals, confidences = signal_gen.generate_signals(X_test)
+    if is_ml_model:
+        # 加载ML模型
+        ml_instance, ml_type = load_ml_model_for_backtest(model_name)
+        print(f"  ML模型类型: {ml_type}")
+        
+        # 生成信号
+        print("\n[3] 生成交易信号...")
+        signal_gen = MLSignalGenerator(ml_instance, ml_type)
+        signals, confidences = signal_gen.generate_signals(X_test)
+    else:
+        # 加载DL模型
+        model = load_model_for_backtest(model_name, input_dim=X_test.shape[2], seq_len=seq_len)
+        
+        # 生成信号
+        print("\n[3] 生成交易信号...")
+        signal_gen = SignalGenerator(model, scaler_params, seq_len)
+        signals, confidences = signal_gen.generate_signals(X_test)
     
     signal_counts = {
         'BUY': (signals == 2).sum(),
@@ -743,7 +814,7 @@ def run_backtest(
 def main():
     parser = argparse.ArgumentParser(description='策略回测模块')
     parser.add_argument('--model', type=str, nargs='+', default=['transformer'],
-                        help='要回测的模型 (lstm, gru, deeplob, transformer, smart_trans, all)')
+                        help='要回测的模型 (arima, logistic, xgboost, rf, lstm, gru, deeplob, transformer, smart_trans, all/ml/deep)')
     parser.add_argument('--data', type=str, default='data/processed/combined',
                         help='数据目录')
     parser.add_argument('--output', type=str, default='backtest_results',
@@ -762,7 +833,14 @@ def main():
     
     # 确定要回测的模型
     if 'all' in args.model:
-        model_names = ['lstm', 'gru', 'transformer']
+        # 所有9个模型 (ML + DL)
+        model_names = ML_MODELS + DL_MODELS
+    elif 'ml' in args.model:
+        # 仅ML模型
+        model_names = ML_MODELS
+    elif 'deep' in args.model or 'dl' in args.model:
+        # 仅深度学习模型
+        model_names = DL_MODELS
     else:
         model_names = args.model
     

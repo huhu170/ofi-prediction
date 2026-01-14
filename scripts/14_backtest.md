@@ -1,7 +1,7 @@
 # 策略回测方案说明
 
 > 对应脚本：`14_backtest.py`  
-> 版本：v1.0  
+> 版本：v1.1  
 > 更新日期：2026-01-14
 
 ---
@@ -109,20 +109,34 @@ if 持仓盈利 >= 5%: 触发止盈
 
 ## 4. 使用方法
 
-### 4.1 命令行参数
+### 4.1 支持的模型
+
+| 类型 | 模型名称 | 说明 |
+|------|----------|------|
+| **ML模型** | arima | ARIMA时间序列 |
+| **ML模型** | logistic | 逻辑回归 |
+| **ML模型** | rf | 随机森林 |
+| **ML模型** | xgboost | XGBoost |
+| **DL模型** | lstm | LSTM |
+| **DL模型** | gru | GRU |
+| **DL模型** | deeplob | DeepLOB |
+| **DL模型** | transformer | Transformer |
+| **DL模型** | smart_trans | Smart-Transformer（本文） |
+
+### 4.2 命令行参数
 
 ```bash
 python 14_backtest.py [OPTIONS]
 
 Options:
-  --model MODEL [...]  要回测的模型 (lstm, gru, transformer, all)
+  --model MODEL [...]  要回测的模型 (arima, logistic, xgboost, rf, lstm, gru, deeplob, transformer, smart_trans, all/ml/deep)
   --data PATH          数据目录
   --output PATH        输出目录
   --seq-len INTEGER    序列长度
   --compare            对比所有模型
 ```
 
-### 4.2 使用示例
+### 4.3 使用示例
 
 ```bash
 # 回测单个模型
@@ -131,7 +145,13 @@ python scripts/14_backtest.py --model transformer
 # 回测多个模型并对比
 python scripts/14_backtest.py --model lstm gru transformer --compare
 
-# 回测所有模型
+# 回测所有ML模型
+python scripts/14_backtest.py --model ml --compare
+
+# 回测所有深度学习模型
+python scripts/14_backtest.py --model deep --compare
+
+# 回测全部9个模型
 python scripts/14_backtest.py --model all --compare
 ```
 
@@ -141,10 +161,28 @@ python scripts/14_backtest.py --model all --compare
 
 ```
 backtest_results/
-├── backtest_transformer.png   # 权益曲线图
+├── # ML模型回测结果
+├── backtest_arima.png
+├── backtest_logistic.png
+├── backtest_rf.png
+├── backtest_xgboost.png
+├── metrics_arima.json
+├── metrics_logistic.json
+├── metrics_rf.json
+├── metrics_xgboost.json
+│
+├── # DL模型回测结果
 ├── backtest_lstm.png
-├── metrics_transformer.json   # 回测指标
+├── backtest_gru.png
+├── backtest_deeplob.png
+├── backtest_transformer.png
+├── backtest_smart_trans.png
 ├── metrics_lstm.json
+├── metrics_gru.json
+├── metrics_deeplob.json
+├── metrics_transformer.json
+├── metrics_smart_trans.json
+│
 └── comparison.csv             # 模型对比表
 ```
 
@@ -168,6 +206,20 @@ backtest_results/
 ## 6. 注意事项
 
 1. **数据要求**: 需要先运行 `11_feature_calculator.py` 和 `12_dataset_builder.py`
-2. **模型要求**: 需要先运行 `13_model_trainer.py` 训练模型
-3. **历史限制**: 回测结果不代表未来表现
-4. **成本假设**: 实际交易成本可能更高
+2. **DL模型要求**: 需要先运行 `13_model_trainer.py --model all` 训练深度学习模型
+3. **ML模型要求**: 需要先运行 `13_model_trainer.py --model ml` 训练机器学习模型
+4. **历史限制**: 回测结果不代表未来表现
+5. **成本假设**: 实际交易成本可能更高
+
+### 6.1 训练模型示例
+
+```bash
+# 训练所有深度学习模型
+python scripts/13_model_trainer.py --model all --epochs 50
+
+# 训练所有机器学习模型（包括ARIMA）
+python scripts/13_model_trainer.py --model ml
+
+# 完整训练（DL + ML）
+python scripts/13_model_trainer.py --model all ml --epochs 50
+```
