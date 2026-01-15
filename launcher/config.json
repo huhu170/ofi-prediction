@@ -1,0 +1,19 @@
+{
+  "database": {
+    "host": "localhost",
+    "port": 5433,
+    "database": "futu_ofi",
+    "user": "postgres",
+    "password": "ofi123456"
+  },
+  "futu": {
+    "opend_path": "c:/Users/12995/Downloads/Futu_OpenD_9.6.5618_Windows/Futu_OpenD_9.6.5618_Windows/Futu_OpenD_9.6.5618_Windows/FutuOpenD.exe",
+    "host": "127.0.0.1",
+    "port": 11111,
+    "auto_start": true
+  },
+  "display": {
+    "default_stock": "HK.00700",
+    "default_ktype": "K_DAY"
+  }
+}

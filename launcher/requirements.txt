@@ -1,0 +1,5 @@
+# 论文项目脚本启动器 v1.0 依赖
+customtkinter>=5.2.0
+psycopg2-binary>=2.9.9
+futu-api>=9.0.0
+python-dotenv>=1.0.0
