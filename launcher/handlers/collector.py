@@ -36,59 +36,105 @@ class CollectorHandler:
         self.app = app
         self.scripts_dir = Path(scripts_dir)
         self._process = None
+        self._stopped = False  # 手动停止标记
     
     @property
     def is_running(self):
-        return self._process is not None
+        return self._process is not None and self._process.poll() is None
     
     def start(self, script_name, log_view, on_done=None):
         """开始采集"""
-        if self._process:
+        if self._process and self._process.poll() is None:
             return False
         
         script = self.scripts_dir / script_name
         if not script.exists():
-            log_view.log(f"脚本不存在: {script}")
+            log_view.log(f"Script not found: {script}")
             return False
         
         python_exe = get_python_executable()
         log_view.log(f"Python: {python_exe}")
-        log_view.log(f"脚本: {script}")
+        log_view.log(f"Script: {script}")
         log_view.log("=" * 50)
         
         self._on_done = on_done
+        self._stopped = False
+        self._log_view = log_view  # 保存引用
         
         def run():
-            # CREATE_NO_WINDOW 隐藏 Python 控制台窗口
-            self._process = subprocess.Popen(
-                [python_exe, str(script)],
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-                text=True, bufsize=1, cwd=str(self.scripts_dir),
-                encoding='utf-8', errors='replace',
-                creationflags=subprocess.CREATE_NO_WINDOW
-            )
-            
-            for line in self._process.stdout:
-                line = line.strip()
-                if line:
-                    self.app.after(0, lambda l=line: log_view.log(l))
-            
-            self._process.wait()
-            self.app.after(0, lambda: self._finish(log_view))
+            try:
+                # CREATE_NO_WINDOW 隐藏 Python 控制台窗口
+                self._process = subprocess.Popen(
+                    [python_exe, str(script)],
+                    stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                    text=True, bufsize=1, cwd=str(self.scripts_dir),
+                    encoding='utf-8', errors='replace',
+                    creationflags=subprocess.CREATE_NO_WINDOW
+                )
+                
+                # 读取输出
+                while True:
+                    proc = self._process  # 本地引用，避免竞态
+                    if proc is None:
+                        break
+                    line = proc.stdout.readline()
+                    if not line:
+                        if proc.poll() is not None:
+                            break
+                        continue
+                    line = line.strip()
+                    if line:
+                        self.app.after(0, lambda l=line: log_view.log(l))
+                
+                # 等待进程结束
+                proc = self._process
+                if proc:
+                    try:
+                        proc.wait()
+                    except Exception:
+                        pass
+            except Exception as e:
+                self.app.after(0, lambda: log_view.log(f"Error: {e}"))
+            finally:
+                self.app.after(0, lambda: self._finish(log_view))
         
         threading.Thread(target=run, daemon=True).start()
         return True
     
-    def stop(self):
+    def stop(self, log_view=None):
         """停止采集"""
+        self._stopped = True
         if self._process:
-            self._process.terminate()
-            self._process = None
-    
-    def _finish(self, log_view):
-        """采集完成"""
-        self._process = None
-        log_view.log("=" * 50)
-        log_view.log("采集已停止")
+            pid = self._process.pid
+            try:
+                # 直接强制杀死进程树（包括子进程）
+                os.system(f'taskkill /PID {pid} /F /T >nul 2>&1')
+            except Exception:
+                pass
+            finally:
+                self._process = None
+        
+        # 显示停止信息
+        view = log_view or self._log_view
+        if view:
+            try:
+                view.log("=" * 50)
+                view.log("[STOPPED] Collection stopped by user")
+            except Exception:
+                pass
+        
         if self._on_done:
             self._on_done()
+    
+    def _finish(self, log_view):
+        """采集完成（自然结束时调用）"""
+        self._process = None
+        # 手动停止时，stop() 已经显示了信息，这里只处理自然结束
+        if not self._stopped:
+            try:
+                log_view.log("=" * 50)
+                log_view.log("[DONE] Collection completed")
+            except Exception:
+                pass
+            if self._on_done:
+                self._on_done()

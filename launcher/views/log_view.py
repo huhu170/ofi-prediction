@@ -21,15 +21,26 @@ class LogView(ttk.Frame):
         log_frame = ttk.Frame(self)
         log_frame.pack(fill=BOTH, expand=YES, padx=15, pady=(0, 12))
         
+        # 添加滚动条
+        scrollbar = ttk.Scrollbar(log_frame)
+        scrollbar.pack(side=RIGHT, fill=Y)
+        
         self.log_widget = tk.Text(log_frame, font=("Consolas", 10), wrap="word",
                                    bg="#0d1b2a", fg="#e0e0e0", insertbackground="#e0e0e0",
-                                   relief="flat", padx=10, pady=8)
-        self.log_widget.pack(fill=BOTH, expand=YES)
+                                   relief="flat", padx=10, pady=8,
+                                   yscrollcommand=scrollbar.set)
+        self.log_widget.pack(side=LEFT, fill=BOTH, expand=YES)
+        
+        scrollbar.config(command=self.log_widget.yview)
     
     def log(self, msg):
-        """写入日志"""
-        self.log_widget.insert("end", msg + "\n")
-        self.log_widget.see("end")
+        """写入日志（安全检查控件是否存在）"""
+        try:
+            if self.winfo_exists() and self.log_widget.winfo_exists():
+                self.log_widget.insert("end", msg + "\n")
+                self.log_widget.see("end")
+        except Exception:
+            pass  # 控件已销毁，忽略
     
     def clear(self):
         """清空日志"""

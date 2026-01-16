@@ -209,16 +209,23 @@ class CalendarView(ttk.Frame):
     
     def _show_detail(self, date_str):
         """显示日期详情"""
-        # 先检查缓存
-        if date_str in self._detail_cache:
+        from datetime import datetime
+        today = datetime.now().strftime("%Y-%m-%d")
+        
+        # 当日数据不使用缓存（实时查询），其他日期用缓存
+        if date_str != today and date_str in self._detail_cache:
             self._render_detail(date_str, self._detail_cache[date_str])
             return
         
-        # 缓存未命中，异步加载
+        # 实时加载
         self._detail.delete("1.0", "end")
         self._detail.insert("end", f"⏳ 正在加载 {date_str} ...")
         
         def load():
+            # 清除 DatabaseManager 中该日期的缓存
+            if date_str in self.db_manager._detail_cache:
+                del self.db_manager._detail_cache[date_str]
+            
             data = self.db_manager.get_date_detail(date_str)
             self._detail_cache[date_str] = data
             # 检查是否仍是当前选中

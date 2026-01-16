@@ -161,6 +161,7 @@ CREATE TABLE ofi_features (
     mid_price DECIMAL(12,6),                -- 中间价 (bid1 + ask1) / 2
     spread DECIMAL(12,6),                   -- 买卖价差 ask1 - bid1
     spread_bps DECIMAL(12,4),               -- 价差基点 spread / mid_price * 10000
+    is_extreme_spread BOOLEAN DEFAULT FALSE,-- 极端价差标记 (spread_bps > 100)
     return_pct DECIMAL(12,8),               -- 收益率 (当前mid - 上一个mid) / 上一个mid
     
     -- ========== OFI系列特征 ==========

@@ -44,6 +44,7 @@ class LauncherApp(ttkb.Window):
         self.futu_connected = False
         self.current_view = None
         self._current_log_view = None
+        self._collect_log_view = None  # 采集日志视图（持久保留）
         
         # 处理器
         self._db_handler = DatabaseHandler(self)
@@ -83,8 +84,12 @@ class LauncherApp(ttkb.Window):
         if self.current_view == name:
             return
         
+        # 清理子组件（但保留采集日志视图）
         for w in self.content.winfo_children():
-            w.destroy()
+            if w is self._collect_log_view:
+                w.pack_forget()  # 只隐藏，不销毁
+            else:
+                w.destroy()
         
         self._current_log_view = None
         
@@ -95,9 +100,15 @@ class LauncherApp(ttkb.Window):
             self._main_view = view
             
         elif name == "calendar":
-            ttk.Label(self.content, text="📅  数据采集日历", 
-                      font=("Microsoft YaHei", 18, "bold")).pack(pady=(10, 8))
-            CalendarView(self.content, db_manager).pack(fill=BOTH, expand=YES, padx=5, pady=5)
+            # 标题栏 + 刷新按钮
+            title_frame = ttk.Frame(self.content)
+            title_frame.pack(fill=X, pady=(10, 8))
+            ttk.Label(title_frame, text="📅  数据采集日历", 
+                      font=("Microsoft YaHei", 18, "bold")).pack(side=LEFT, padx=10)
+            self._calendar_view = CalendarView(self.content, db_manager)
+            ttk.Button(title_frame, text="🔄 刷新", width=8, style="info-outline.TButton",
+                       command=self._calendar_view.refresh).pack(side=LEFT, padx=10)
+            self._calendar_view.pack(fill=BOTH, expand=YES, padx=5, pady=5)
             
         elif name == "db":
             view = LogView(self.content, "数据库连接", "📊")
@@ -110,8 +121,16 @@ class LauncherApp(ttkb.Window):
             self._current_log_view = view
             
         elif name == "collect":
-            view = LogView(self.content, "腾讯数据采集", "▶")
-            view.pack(fill=BOTH, expand=YES)
+            # 采集视图：复用已有的 log_view（保持日志历史）
+            if self._collect_log_view and self._collect_log_view.winfo_exists():
+                # 重新挂载已有的视图
+                self._collect_log_view.pack(fill=BOTH, expand=YES, in_=self.content)
+                view = self._collect_log_view
+            else:
+                # 创建新视图
+                view = LogView(self.content, "腾讯数据采集", "▶")
+                view.pack(fill=BOTH, expand=YES)
+                self._collect_log_view = view
             self._current_log_view = view
         
         self.current_view = name
@@ -145,17 +164,23 @@ class LauncherApp(ttkb.Window):
         self._futu_handler.connect(self._current_log_view, on_done=on_done)
     
     def on_collect(self):
-        """开始采集"""
+        """开始采集 / 查看采集日志"""
+        # 先切换到采集视图
+        self.current_view = None  # 强制刷新
+        self.show_view("collect")
+        
+        # 如果已在采集，只显示视图，不重新启动
         if self._collector.is_running:
             return
-        self.show_view("collect")
+        
+        # 启动采集
         self.sidebar.set_collecting(True)
         self._collector.start("09_collect_tencent.py", self._current_log_view, 
                                on_done=lambda: self.sidebar.set_collecting(False))
     
     def on_stop(self):
         """停止采集"""
-        self._collector.stop()
+        self._collector.stop(self._collect_log_view)
         self.sidebar.set_collecting(False)
 
 

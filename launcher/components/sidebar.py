@@ -74,8 +74,9 @@ class Sidebar(ttk.Frame):
     def set_collecting(self, collecting):
         """设置采集状态"""
         if collecting:
-            self.collect_btn.config(state=DISABLED, text="⏳  采集中...")
+            # 采集中：按钮仍可点击（用于查看日志），只改变样式
+            self.collect_btn.config(text="⏳  采集中...", bootstyle="warning")
             self.stop_btn.config(state=NORMAL)
         else:
-            self.collect_btn.config(state=NORMAL, text="▶  腾讯数据")
+            self.collect_btn.config(text="▶  腾讯数据", bootstyle="info")
             self.stop_btn.config(state=DISABLED)

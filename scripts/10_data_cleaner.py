@@ -4,6 +4,7 @@
 
 参照论文设定:
 - 时间窗口: Δt = 10秒 (Cont et al., 2014)
+- 交易时段: 09:35-12:00, 13:00-15:55（排除开盘/收盘5分钟）
 - 输入窗口: T = 100个时间步 (约16.7分钟)
 - 预测步长: k ∈ {20, 50, 100}
 
@@ -19,6 +20,7 @@ import argparse
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional, Tuple, List
+from datetime import time as dt_time
 
 # 解决Windows编码问题
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
@@ -52,6 +54,13 @@ MIN_SPREAD_BPS = 0           # 最小价差（基点）
 MAX_SPREAD_BPS = 100         # 最大价差（基点），超过视为异常
 MAX_PRICE_JUMP_PCT = 5.0     # 最大价格跳跃（%），超过视为异常
 MIN_DEPTH = 0                # 最小深度，为0视为异常
+
+# 港股交易时段配置（排除开盘/收盘5分钟）
+# 有效时段: 09:35-12:00, 13:00-15:55
+HK_TRADING_SESSIONS = [
+    ("09:35", "12:00"),  # 上午（排除开盘后5分钟）
+    ("13:00", "15:55"),  # 下午（排除收盘前5分钟）
+]
 
 # 数据路径
 DATA_PROCESSED = Path(os.getenv("DATA_PROCESSED", "data/processed"))
@@ -182,25 +191,75 @@ class DataCleaner:
     数据清洗器
     
     清洗流程:
-    1. 时间窗口聚合（10秒）
-    2. 异常过滤
-    3. 缺失值填充
-    4. 基础特征计算
+    1. 交易时段过滤（排除开盘/收盘5分钟）
+    2. 时间窗口聚合（10秒）
+    3. 异常过滤
+    4. 缺失值填充
+    5. 基础特征计算
     """
     
-    def __init__(self, window_seconds: int = WINDOW_SECONDS):
+    def __init__(self, window_seconds: int = WINDOW_SECONDS, 
+                 trading_sessions: List[Tuple[str, str]] = None):
         self.window_seconds = window_seconds
+        self.trading_sessions = trading_sessions or HK_TRADING_SESSIONS
         self.stats = {
             'raw_orderbook': 0,
             'raw_ticker': 0,
+            'filtered_trading_session': 0,
             'aggregated_windows': 0,
             'filtered_zero_price': 0,
             'filtered_negative_spread': 0,
-            'filtered_extreme_spread': 0,
+            'marked_extreme_spread': 0,  # 改为标记而非过滤
             'filtered_price_jump': 0,
             'filtered_zero_depth': 0,
             'final_windows': 0
         }
+    
+    def filter_trading_session(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        过滤交易时段，只保留有效时段的数据
+        
+        港股有效时段: 09:35-12:00, 13:00-15:55
+        排除:
+        - 开盘后5分钟 (09:30-09:35)
+        - 午间休市 (12:00-13:00)
+        - 收盘前5分钟 (15:55-16:00)
+        
+        Args:
+            df: 原始数据，必须包含 'ts' 列
+            
+        Returns:
+            过滤后的数据
+        """
+        if df.empty:
+            return df
+        
+        original_len = len(df)
+        df = df.copy()
+        
+        # 提取时间部分
+        df['_time'] = df['ts'].dt.time
+        
+        # 构建有效时段掩码
+        mask = pd.Series(False, index=df.index)
+        for start_str, end_str in self.trading_sessions:
+            start_time = datetime.strptime(start_str, "%H:%M").time()
+            end_time = datetime.strptime(end_str, "%H:%M").time()
+            session_mask = (df['_time'] >= start_time) & (df['_time'] < end_time)
+            mask = mask | session_mask
+        
+        # 应用过滤
+        df = df[mask]
+        df = df.drop(columns=['_time'])
+        
+        filtered_count = original_len - len(df)
+        self.stats['filtered_trading_session'] = filtered_count
+        
+        if filtered_count > 0:
+            print(f"  交易时段过滤: {original_len} -> {len(df)} 条 "
+                  f"(移除 {filtered_count} 条非交易时段数据)")
+        
+        return df
     
     def aggregate_orderbook(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -296,20 +355,24 @@ class DataCleaner:
     
     def filter_anomalies(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        过滤异常数据
+        过滤异常数据并标记特殊状态
         
-        异常类型:
+        过滤类型（直接删除）:
         1. 零价格: bid1_price或ask1_price为0或NULL
         2. 负价差: ask1_price < bid1_price
-        3. 极端价差: spread > mid_price * MAX_SPREAD_BPS / 10000
         4. 价格跳跃: 相邻窗口价格变化 > MAX_PRICE_JUMP_PCT%
         5. 零深度: bid1_vol或ask1_vol为0
+        
+        标记类型（保留但添加标记）:
+        3. 极端价差: spread > mid_price * MAX_SPREAD_BPS / 10000
+           标记字段: is_extreme_spread (True/False)
+           理由: 大价差本身是订单流不平衡的重要信号，不应直接过滤
         
         Args:
             df: 聚合后的数据
             
         Returns:
-            过滤后的数据
+            过滤后的数据（含标记字段）
         """
         if df.empty:
             return df
@@ -331,12 +394,12 @@ class DataCleaner:
         self.stats['filtered_negative_spread'] = mask_negative_spread.sum()
         df = df[~mask_negative_spread]
         
-        # 3. 过滤极端价差
+        # 3. 标记极端价差（不过滤，仅标记）
+        # 理由：大价差是订单流不平衡的重要信号，可能包含有价值的预测信息
         df['mid_price'] = (df['bid1_price'] + df['ask1_price']) / 2
         df['spread_bps'] = df['spread'] / df['mid_price'] * 10000
-        mask_extreme_spread = df['spread_bps'] > MAX_SPREAD_BPS
-        self.stats['filtered_extreme_spread'] = mask_extreme_spread.sum()
-        df = df[~mask_extreme_spread]
+        df['is_extreme_spread'] = df['spread_bps'] > MAX_SPREAD_BPS
+        self.stats['marked_extreme_spread'] = df['is_extreme_spread'].sum()
         
         # 4. 过滤价格跳跃
         df = df.sort_values('ts')
@@ -510,19 +573,23 @@ class DataCleaner:
         Returns:
             清洗并合并后的数据
         """
-        print("\n[1/5] 聚合订单簿数据...")
+        print("\n[1/6] 过滤交易时段...")
+        orderbook_df = self.filter_trading_session(orderbook_df)
+        ticker_df = self.filter_trading_session(ticker_df)
+        
+        print("[2/6] 聚合订单簿数据...")
         ob_agg = self.aggregate_orderbook(orderbook_df)
         
-        print("[2/5] 聚合逐笔数据...")
+        print("[3/6] 聚合逐笔数据...")
         tk_agg = self.aggregate_ticker(ticker_df)
         
-        print("[3/5] 过滤异常数据...")
+        print("[4/6] 过滤异常数据...")
         ob_filtered = self.filter_anomalies(ob_agg)
         
-        print("[4/5] 填充缺失窗口...")
+        print("[5/6] 填充缺失窗口...")
         ob_filled = self.fill_missing_windows(ob_filtered)
         
-        print("[5/5] 计算基础特征...")
+        print("[6/6] 计算基础特征...")
         result = self.calculate_base_features(ob_filled)
         
         # 合并逐笔聚合数据
@@ -553,14 +620,17 @@ class DataCleaner:
         print("="*50)
         print(f"  原始订单簿记录:     {self.stats['raw_orderbook']:>10,}")
         print(f"  原始逐笔记录:       {self.stats['raw_ticker']:>10,}")
+        print(f"  交易时段过滤:       {self.stats['filtered_trading_session']:>10,}")
         print(f"  聚合后窗口数:       {self.stats['aggregated_windows']:>10,}")
         print("-"*50)
         print("  异常过滤:")
         print(f"    - 零价格:         {self.stats['filtered_zero_price']:>10,}")
         print(f"    - 负价差:         {self.stats['filtered_negative_spread']:>10,}")
-        print(f"    - 极端价差:       {self.stats['filtered_extreme_spread']:>10,}")
         print(f"    - 价格跳跃:       {self.stats['filtered_price_jump']:>10,}")
         print(f"    - 零深度:         {self.stats['filtered_zero_depth']:>10,}")
+        print("-"*50)
+        print("  标记（保留但标记）:")
+        print(f"    - 极端价差:       {self.stats['marked_extreme_spread']:>10,}")
         print("-"*50)
         print(f"  最终有效窗口:       {self.stats['final_windows']:>10,}")
         print("="*50)
@@ -742,6 +812,7 @@ def main():
     print("  OFI论文 - 数据清洗模块")
     print("="*50)
     print(f"  时间窗口: {WINDOW_SECONDS} 秒")
+    print(f"  有效时段: {HK_TRADING_SESSIONS}")
     print(f"  输出目录: {DATA_PROCESSED}")
     
     # 初始化组件
