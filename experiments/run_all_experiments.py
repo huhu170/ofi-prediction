@@ -68,18 +68,18 @@ def run_experiment(script_name, description, dry_run=False):
         
         if result.returncode == 0:
             print(result.stdout)
-            print(f"  ✓ 完成")
+            print(f"  [OK] 完成")
             return True
         else:
-            print(f"  ✗ 失败")
+            print(f"  [FAIL] 失败")
             print(result.stderr)
             return False
             
     except subprocess.TimeoutExpired:
-        print(f"  ✗ 超时")
+        print(f"  [TIMEOUT] 超时")
         return False
     except Exception as e:
-        print(f"  ✗ 错误: {e}")
+        print(f"  [ERROR] 错误: {e}")
         return False
 
 def main():
@@ -107,7 +107,7 @@ def main():
     
     for section in sections:
         if section not in EXPERIMENTS:
-            print(f"\n⚠ 未知章节: {section}")
+            print(f"\n[WARN] 未知章节: {section}")
             continue
         
         print(f"\n\n{'#'*60}")

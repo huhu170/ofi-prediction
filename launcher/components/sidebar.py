@@ -7,9 +7,8 @@ class Sidebar(ttk.Frame):
     """侧边栏菜单"""
     
     def __init__(self, master, app, **kwargs):
-        super().__init__(master, width=180, **kwargs)
+        super().__init__(master, **kwargs)
         self.app = app
-        self.pack_propagate(False)
         self._create_widgets()
     
     def _create_widgets(self):

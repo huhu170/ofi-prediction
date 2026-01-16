@@ -75,7 +75,7 @@ CREATE DATABASE futu_hft;
 CREATE EXTENSION IF NOT EXISTS timescaledb;
 
 # 5. 执行建表脚本
-\i 'd:/论文项目/database/init_schema.sql'
+\i 'd:/paper project/database/init_schema.sql'
 ```
 
 ### 方法二：使用 pgAdmin 图形界面

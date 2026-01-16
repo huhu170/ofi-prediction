@@ -108,9 +108,13 @@ def load_model(model_path: Path, input_dim: int = 25, seq_len: int = 100):
     Returns:
         加载好的模型
     """
-    # 动态导入模型类
-    sys.path.insert(0, str(Path(__file__).parent))
-    from model_trainer import create_model
+    # 动态导入模型类（使用 importlib 处理带数字前缀的文件名）
+    import importlib.util
+    model_trainer_path = Path(__file__).parent / "13_model_trainer.py"
+    spec = importlib.util.spec_from_file_location("model_trainer", model_trainer_path)
+    model_trainer = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(model_trainer)
+    create_model = model_trainer.create_model
     
     # 从路径推断模型类型
     model_name = model_path.parent.name
@@ -160,6 +164,9 @@ class RealtimeFeatureCalculator:
         
         # 上一次的订单簿数据（用于计算差分）
         self.last_orderbook = None
+        
+        # 构建特征名到索引的映射（避免硬编码）
+        self.feature_idx = {col: i for i, col in enumerate(FEATURE_COLS)}
         
     def update_orderbook(self, orderbook: dict):
         """
@@ -215,19 +222,23 @@ class RealtimeFeatureCalculator:
         features['ofi_l10'] = ofi_l5  # 简化：只有5档数据
         features['smart_ofi'] = ofi_l5  # 简化
         
-        # 滚动统计（使用缓冲区历史）
+        # 滚动统计（使用缓冲区历史，通过特征名索引避免硬编码）
         if len(self.feature_buffer) >= 10:
-            recent_ofi = [f[2] for f in list(self.feature_buffer)[-10:]]  # ofi_l1
+            idx_ofi = self.feature_idx['ofi_l1']
+            idx_smart = self.feature_idx['smart_ofi']
+            idx_ret = self.feature_idx['return_pct']
+            
+            recent_ofi = [f[idx_ofi] for f in list(self.feature_buffer)[-10:]]
             features['ofi_ma_10'] = np.mean(recent_ofi)
             features['ofi_std_10'] = np.std(recent_ofi) + 1e-8
             features['ofi_zscore'] = (features['ofi_l1'] - features['ofi_ma_10']) / features['ofi_std_10']
             
-            recent_smart = [f[5] for f in list(self.feature_buffer)[-10:]]  # smart_ofi
+            recent_smart = [f[idx_smart] for f in list(self.feature_buffer)[-10:]]
             features['smart_ofi_ma_10'] = np.mean(recent_smart)
             features['smart_ofi_std_10'] = np.std(recent_smart) + 1e-8
             features['smart_ofi_zscore'] = (features['smart_ofi'] - features['smart_ofi_ma_10']) / features['smart_ofi_std_10']
             
-            recent_ret = [f[1] for f in list(self.feature_buffer)[-10:]]  # return_pct
+            recent_ret = [f[idx_ret] for f in list(self.feature_buffer)[-10:]]
             features['return_ma_10'] = np.mean(recent_ret)
             features['return_std_10'] = np.std(recent_ret) + 1e-8
         else:
@@ -454,17 +465,20 @@ class PaperTrader:
         if not self.quote_ctx:
             return None
         
-        ret, data = self.quote_ctx.get_market_snapshot([code])
-        if ret == RET_OK and not data.empty:
-            row = data.iloc[0]
-            return {
-                'code': code,
-                'last_price': row['last_price'],
-                'bid_price': row['bid_price'],
-                'ask_price': row['ask_price'],
-                'volume': row['volume'],
-                'turnover': row['turnover']
-            }
+        try:
+            ret, data = self.quote_ctx.get_market_snapshot([code])
+            if ret == RET_OK and not data.empty:
+                row = data.iloc[0]
+                return {
+                    'code': code,
+                    'last_price': row['last_price'],
+                    'bid_price': row['bid_price'],
+                    'ask_price': row['ask_price'],
+                    'volume': row['volume'],
+                    'turnover': row['turnover']
+                }
+        except Exception as e:
+            print(f"  [ERROR] 获取报价失败: {e}")
         return None
     
     def get_orderbook(self, code: str) -> Optional[dict]:
@@ -472,21 +486,34 @@ class PaperTrader:
         if not self.quote_ctx:
             return None
         
-        ret, data = self.quote_ctx.get_order_book(code)
-        if ret == RET_OK:
-            orderbook = {'code': code}
-            
-            # 解析买盘
-            for i, (price, volume, _) in enumerate(data['Bid'][:10], 1):
-                orderbook[f'bid{i}_price'] = price
-                orderbook[f'bid{i}_vol'] = volume
-            
-            # 解析卖盘
-            for i, (price, volume, _) in enumerate(data['Ask'][:10], 1):
-                orderbook[f'ask{i}_price'] = price
-                orderbook[f'ask{i}_vol'] = volume
-            
-            return orderbook
+        try:
+            ret, data = self.quote_ctx.get_order_book(code)
+            if ret == RET_OK:
+                orderbook = {'code': code}
+                
+                # 解析买盘（富途API返回列表，每个元素是 [price, volume, order_count]）
+                bid_data = data.get('Bid', [])
+                for i, item in enumerate(bid_data[:10], 1):
+                    if isinstance(item, (list, tuple)) and len(item) >= 2:
+                        orderbook[f'bid{i}_price'] = item[0]
+                        orderbook[f'bid{i}_vol'] = item[1]
+                    else:
+                        orderbook[f'bid{i}_price'] = 0
+                        orderbook[f'bid{i}_vol'] = 0
+                
+                # 解析卖盘
+                ask_data = data.get('Ask', [])
+                for i, item in enumerate(ask_data[:10], 1):
+                    if isinstance(item, (list, tuple)) and len(item) >= 2:
+                        orderbook[f'ask{i}_price'] = item[0]
+                        orderbook[f'ask{i}_vol'] = item[1]
+                    else:
+                        orderbook[f'ask{i}_price'] = 0
+                        orderbook[f'ask{i}_vol'] = 0
+                
+                return orderbook
+        except Exception as e:
+            print(f"  [ERROR] 获取订单簿失败: {e}")
         return None
     
     def check_risk(self, code: str, signal: str, price: float) -> Tuple[bool, str]:
@@ -520,17 +547,35 @@ class PaperTrader:
             # 检查是否有持仓
             if code not in self.positions or self.positions[code]['qty'] <= 0:
                 return False, "无持仓可卖"
-            
-            # 止损/止盈检查
-            avg_price = self.positions[code]['avg_price']
-            pnl_pct = (price - avg_price) / avg_price
-            
-            if pnl_pct <= -self.config['stop_loss_pct']:
-                return True, f"触发止损 ({pnl_pct*100:.1f}%)"
-            if pnl_pct >= self.config['take_profit_pct']:
-                return True, f"触发止盈 ({pnl_pct*100:.1f}%)"
         
         return True, "通过"
+    
+    def check_stop_loss_take_profit(self, code: str, price: float) -> Optional[str]:
+        """
+        检查止损止盈条件
+        
+        Args:
+            code: 股票代码
+            price: 当前价格
+            
+        Returns:
+            触发的条件类型 ('STOP_LOSS', 'TAKE_PROFIT') 或 None
+        """
+        if code not in self.positions or self.positions[code]['qty'] <= 0:
+            return None
+        
+        avg_price = self.positions[code]['avg_price']
+        if avg_price <= 0:
+            return None
+            
+        pnl_pct = (price - avg_price) / avg_price
+        
+        if pnl_pct <= -self.config['stop_loss_pct']:
+            return 'STOP_LOSS'
+        if pnl_pct >= self.config['take_profit_pct']:
+            return 'TAKE_PROFIT'
+        
+        return None
     
     def calculate_qty(self, code: str, signal: str, price: float) -> int:
         """计算下单数量"""
@@ -732,58 +777,77 @@ class TradingEngine:
         update_count = 0
         
         while self.is_running:
-            # 获取订单簿
-            orderbook = self.trader.get_orderbook(self.code)
-            if orderbook is None:
-                time.sleep(1)
-                continue
-            
-            # 更新特征
-            self.feature_calc.update_orderbook(orderbook)
-            update_count += 1
-            
-            # 检查是否准备好
-            if not self.feature_calc.is_ready():
-                if update_count % 10 == 0:
-                    print(f"  缓冲区: {len(self.feature_calc.feature_buffer)}/100")
-                time.sleep(1)
-                continue
-            
-            # 获取序列
-            sequence = self.feature_calc.get_sequence()
-            if sequence is None:
-                time.sleep(1)
-                continue
-            
-            # 生成信号
-            signal, confidence, probs = self.signal_gen.generate_signal(sequence)
-            self.stats['total_signals'] += 1
-            
-            # 统计
-            if signal == 'BUY':
-                self.stats['buy_signals'] += 1
-            elif signal == 'SELL':
-                self.stats['sell_signals'] += 1
-            else:
-                self.stats['hold_signals'] += 1
-            
-            # 打印信号
-            timestamp = datetime.now().strftime('%H:%M:%S')
-            prob_str = f"[跌:{probs[0]:.1%} 稳:{probs[1]:.1%} 涨:{probs[2]:.1%}]"
-            
-            if signal != 'HOLD':
-                print(f"  {timestamp} | {signal:4s} | 置信度:{confidence:.1%} | {prob_str}")
+            try:
+                # 获取订单簿
+                orderbook = self.trader.get_orderbook(self.code)
+                if orderbook is None:
+                    time.sleep(1)
+                    continue
                 
-                # 执行信号
-                if self.trader.execute_signal(self.code, signal, confidence, self.dry_run):
-                    self.stats['executed_trades'] += 1
-            else:
-                # 每10个HOLD信号打印一次
-                if self.stats['hold_signals'] % 10 == 0:
-                    print(f"  {timestamp} | HOLD | 置信度:{confidence:.1%} | {prob_str}")
-            
-            # 等待下一个周期
-            time.sleep(10)  # 10秒一次
+                # 更新特征
+                self.feature_calc.update_orderbook(orderbook)
+                update_count += 1
+                
+                # 获取当前价格用于止损止盈检查
+                current_price = (orderbook.get('bid1_price', 0) + orderbook.get('ask1_price', 0)) / 2
+                
+                # 检查止损止盈（优先于模型信号）
+                sl_tp_trigger = self.trader.check_stop_loss_take_profit(self.code, current_price)
+                if sl_tp_trigger:
+                    timestamp = datetime.now().strftime('%H:%M:%S')
+                    trigger_type = "止损" if sl_tp_trigger == 'STOP_LOSS' else "止盈"
+                    print(f"  {timestamp} | [!] 触发{trigger_type}，执行卖出")
+                    if self.trader.execute_signal(self.code, 'SELL', 1.0, self.dry_run):
+                        self.stats['executed_trades'] += 1
+                    time.sleep(10)
+                    continue
+                
+                # 检查是否准备好
+                if not self.feature_calc.is_ready():
+                    if update_count % 10 == 0:
+                        print(f"  缓冲区: {len(self.feature_calc.feature_buffer)}/100")
+                    time.sleep(1)
+                    continue
+                
+                # 获取序列
+                sequence = self.feature_calc.get_sequence()
+                if sequence is None:
+                    time.sleep(1)
+                    continue
+                
+                # 生成信号
+                signal, confidence, probs = self.signal_gen.generate_signal(sequence)
+                self.stats['total_signals'] += 1
+                
+                # 统计
+                if signal == 'BUY':
+                    self.stats['buy_signals'] += 1
+                elif signal == 'SELL':
+                    self.stats['sell_signals'] += 1
+                else:
+                    self.stats['hold_signals'] += 1
+                
+                # 打印信号
+                timestamp = datetime.now().strftime('%H:%M:%S')
+                prob_str = f"[跌:{probs[0]:.1%} 稳:{probs[1]:.1%} 涨:{probs[2]:.1%}]"
+                
+                if signal != 'HOLD':
+                    print(f"  {timestamp} | {signal:4s} | 置信度:{confidence:.1%} | {prob_str}")
+                    
+                    # 执行信号
+                    if self.trader.execute_signal(self.code, signal, confidence, self.dry_run):
+                        self.stats['executed_trades'] += 1
+                else:
+                    # 每10个HOLD信号打印一次
+                    if self.stats['hold_signals'] % 10 == 0:
+                        print(f"  {timestamp} | HOLD | 置信度:{confidence:.1%} | {prob_str}")
+                
+                # 等待下一个周期
+                time.sleep(10)  # 10秒一次
+                
+            except Exception as e:
+                print(f"  [ERROR] 交易循环异常: {e}")
+                time.sleep(5)  # 出错后等待5秒再继续
     
     def stop(self):
         """停止交易引擎"""

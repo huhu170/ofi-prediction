@@ -50,7 +50,7 @@ SEQUENCE_LENGTH = 100  # T=100
 
 # 模型列表
 TRADITIONAL_MODELS = ['arima']  # 传统时序模型
-ML_MODELS = ['logistic', 'random_forest', 'xgboost']  # 机器学习模型
+ML_MODELS = ['logistic', 'rf', 'xgboost']  # 机器学习模型
 BASELINE_MODELS = TRADITIONAL_MODELS + ML_MODELS  # 全部基准模型
 DEEP_MODELS = ['lstm', 'gru', 'deeplob', 'transformer', 'smart_trans']
 ALL_MODELS = BASELINE_MODELS + DEEP_MODELS  # 9个模型

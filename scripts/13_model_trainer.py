@@ -161,18 +161,46 @@ def load_dataset(data_dir: Path) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
 
 def create_dataloaders(
     splits: Dict[str, Tuple[np.ndarray, np.ndarray]],
-    batch_size: int = TRAIN_CONFIG['batch_size']
+    batch_size: int = TRAIN_CONFIG['batch_size'],
+    correlations: Dict[str, np.ndarray] = None
 ) -> Dict[str, DataLoader]:
-    """创建PyTorch DataLoader"""
+    """
+    创建PyTorch DataLoader
+    
+    Args:
+        splits: 数据集字典 {'train': (X, y), ...}
+        batch_size: 批大小
+        correlations: 可选的相关系数字典，用于协方差加权训练
+        
+    Returns:
+        DataLoader字典
+    """
     loaders = {}
     
     for split, (X, y) in splits.items():
         X_tensor = torch.FloatTensor(X)
-        # 标签转换: -1,0,1 → 0,1,2 (CrossEntropyLoss需要从0开始)
-        y_shifted = y.astype(np.int64) + 1  # -1→0, 0→1, 1→2
+        
+        # 智能标签转换: 自动检测标签范围
+        y_min, y_max = y.min(), y.max()
+        if y_min == -1 and y_max == 1:
+            # 原始标签 -1,0,1 → 0,1,2 (CrossEntropyLoss需要从0开始)
+            y_shifted = y.astype(np.int64) + 1
+        elif y_min == 0 and y_max == 2:
+            # 已经是 0,1,2 格式
+            y_shifted = y.astype(np.int64)
+        else:
+            print(f"  [WARN] 非预期标签范围 [{y_min}, {y_max}]，尝试直接使用")
+            y_shifted = y.astype(np.int64)
+        
         y_tensor = torch.LongTensor(y_shifted)
         
-        dataset = TensorDataset(X_tensor, y_tensor)
+        # 如果提供了相关系数，创建包含相关系数的Dataset
+        if correlations is not None and split in correlations:
+            corr_tensor = torch.FloatTensor(correlations[split])
+            dataset = TensorDataset(X_tensor, y_tensor, corr_tensor)
+        else:
+            dataset = TensorDataset(X_tensor, y_tensor)
+        
         shuffle = (split == 'train')
         
         loaders[split] = DataLoader(
@@ -388,10 +416,7 @@ class DeepLOBModel(BaseModel):
             nn.LeakyReLU(0.01)
         )
         
-        # 计算卷积后的序列长度
-        conv_seq_len = seq_len // 4  # 2次MaxPool1d(2)
-        
-        # LSTM层
+        # LSTM层（卷积后序列长度 = seq_len // 4，经过2次MaxPool1d(2)）
         self.lstm = nn.LSTM(
             input_size=cfg['conv_filters'][2],
             hidden_size=cfg['lstm_hidden'],
@@ -622,15 +647,22 @@ class SmartTransformer(BaseModel):
     
     def compute_sample_weights(self, correlations: torch.Tensor) -> torch.Tensor:
         """
-        计算协方差加权的样本权重
+        计算协方差加权的样本权重（工具方法，供外部调用或自定义训练循环使用）
         
-        w_t = 1 + γ × max(0, ρ_t)
+        公式: w_t = 1 + γ × max(0, ρ_t)
+        
+        当 ρ_t > 0 时（个股与指数正相关），给予更高权重，
+        因为此时OFI的价格预测信号更可靠。
         
         Args:
             correlations: 个股-指数相关系数 (batch,)
             
         Returns:
             weights: 样本权重 (batch,)
+            
+        Note:
+            实际训练时，协方差加权在 Trainer.train_epoch() 中实现，
+            以确保在 DataLoader shuffle 后索引正确对应。
         """
         weights = 1.0 + self.cov_gamma * torch.clamp(correlations, min=0)
         return weights
@@ -676,11 +708,11 @@ if HAS_SKLEARN:
                 n_estimators=100,
                 max_depth=6,
                 learning_rate=0.1,
-                objective='multi:softmax',
+                objective='multi:softprob',  # 使用softprob以支持predict_proba
                 num_class=NUM_CLASSES,
-                use_label_encoder=False,
                 eval_metric='mlogloss',
-                n_jobs=-1
+                n_jobs=-1,
+                verbosity=0  # 减少日志输出
             )
             model.fit(X_flat, y_train)
             self.models['xgboost'] = model
@@ -782,8 +814,23 @@ if HAS_SKLEARN:
             return np.array(predictions)
         
         def _predict_arima_proba(self, X: np.ndarray) -> np.ndarray:
-            """ARIMA预测概率（基于趋势的软分类）"""
+            """
+            ARIMA预测概率（基于趋势的软分类）
+            
+            使用softmax将趋势值转换为概率分布：
+            - 计算趋势与各类别中心的距离
+            - 通过softmax得到归一化概率
+            """
             lower_th, upper_th = self.arima_threshold
+            mid_th = (lower_th + upper_th) / 2  # 平稳区域中心
+            
+            # 类别中心（基于训练集阈值推断）
+            down_center = lower_th - abs(lower_th)  # 下跌中心
+            stable_center = mid_th  # 平稳中心
+            up_center = upper_th + abs(upper_th)  # 上涨中心
+            
+            # 温度参数，控制概率分布的锐度
+            temperature = max(abs(upper_th - lower_th), 1e-6) * 2
             
             probas = []
             for i in range(len(X)):
@@ -791,25 +838,18 @@ if HAS_SKLEARN:
                 last_changes = np.diff(seq[-6:])
                 trend = np.mean(last_changes)
                 
-                # 使用sigmoid软化分类边界
-                # 计算相对位置
-                if trend < lower_th:
-                    # 偏向下跌
-                    down_prob = 0.6 + 0.3 * min(1, (lower_th - trend) / max(abs(lower_th), 1e-6))
-                    up_prob = 0.1
-                    stable_prob = 1 - down_prob - up_prob
-                elif trend > upper_th:
-                    # 偏向上涨
-                    up_prob = 0.6 + 0.3 * min(1, (trend - upper_th) / max(abs(upper_th), 1e-6))
-                    down_prob = 0.1
-                    stable_prob = 1 - down_prob - up_prob
-                else:
-                    # 偏向平稳
-                    stable_prob = 0.5
-                    down_prob = 0.25
-                    up_prob = 0.25
+                # 计算到各类别中心的负距离（作为logits）
+                logits = np.array([
+                    -abs(trend - down_center),    # 下跌
+                    -abs(trend - stable_center),  # 平稳
+                    -abs(trend - up_center)       # 上涨
+                ]) / temperature
                 
-                probas.append([down_prob, stable_prob, up_prob])
+                # Softmax转换为概率
+                exp_logits = np.exp(logits - np.max(logits))  # 数值稳定
+                proba = exp_logits / exp_logits.sum()
+                
+                probas.append(proba)
             
             return np.array(probas)
         
@@ -914,15 +954,27 @@ class Trainer:
         self.patience_counter = 0
         self.best_model_state = None
     
-    def train_epoch(self, train_loader: DataLoader, correlations: np.ndarray = None) -> Tuple[float, float]:
-        """训练一个epoch"""
+    def train_epoch(self, train_loader: DataLoader) -> Tuple[float, float]:
+        """
+        训练一个epoch
+        
+        注意：如果使用协方差加权，DataLoader中的每个batch应包含3个元素 (X, y, corr)
+        """
         self.model.train()
         total_loss = 0
         correct = 0
         total = 0
         
-        for batch_idx, (X, y) in enumerate(train_loader):
-            X, y = X.to(DEVICE), y.to(DEVICE)
+        for batch_data in train_loader:
+            # 支持两种数据格式：(X, y) 或 (X, y, corr)
+            if len(batch_data) == 3:
+                X, y, batch_corr = batch_data
+                X, y, batch_corr = X.to(DEVICE), y.to(DEVICE), batch_corr.to(DEVICE)
+                has_corr = True
+            else:
+                X, y = batch_data
+                X, y = X.to(DEVICE), y.to(DEVICE)
+                has_corr = False
             
             self.optimizer.zero_grad()
             
@@ -933,13 +985,9 @@ class Trainer:
             losses = self.criterion(logits, y)  # (batch,)
             
             # 协方差加权（可选）
-            if self.use_cov_weight and correlations is not None:
-                # 获取当前batch的相关系数
-                start_idx = batch_idx * train_loader.batch_size
-                end_idx = start_idx + len(y)
-                batch_corr = torch.FloatTensor(correlations[start_idx:end_idx]).to(DEVICE)
-                
-                # 计算权重
+            # 相关系数现在与数据一起打乱，索引正确对应
+            if self.use_cov_weight and has_corr:
+                # 计算权重: w_t = 1 + γ × max(0, ρ_t)
                 weights = 1.0 + self.cov_gamma * torch.clamp(batch_corr, min=0)
                 loss = (losses * weights).mean()
             else:
@@ -964,14 +1012,20 @@ class Trainer:
         return avg_loss, accuracy
     
     def validate(self, val_loader: DataLoader) -> Tuple[float, float]:
-        """验证"""
+        """验证（不使用协方差加权，只评估标准损失）"""
         self.model.eval()
         total_loss = 0
         correct = 0
         total = 0
         
         with torch.no_grad():
-            for X, y in val_loader:
+            for batch_data in val_loader:
+                # 支持两种数据格式：(X, y) 或 (X, y, corr)
+                if len(batch_data) == 3:
+                    X, y, _ = batch_data  # 验证时忽略相关系数
+                else:
+                    X, y = batch_data
+                
                 X, y = X.to(DEVICE), y.to(DEVICE)
                 
                 logits = self.model(X)
@@ -991,17 +1045,15 @@ class Trainer:
         self, 
         train_loader: DataLoader, 
         val_loader: DataLoader,
-        epochs: int = None,
-        correlations: np.ndarray = None
+        epochs: int = None
     ) -> Dict:
         """
         完整训练流程
         
         Args:
-            train_loader: 训练数据加载器
+            train_loader: 训练数据加载器（如使用协方差加权，每batch应为(X,y,corr)）
             val_loader: 验证数据加载器
             epochs: 训练轮数
-            correlations: 相关系数（用于协方差加权）
             
         Returns:
             训练历史
@@ -1011,10 +1063,12 @@ class Trainer:
         print(f"\n  开始训练 {self.model.model_name}...")
         print(f"  设备: {DEVICE}")
         print(f"  参数量: {self.model.get_num_params():,}")
+        if self.use_cov_weight:
+            print(f"  协方差加权: γ={self.cov_gamma}")
         
         for epoch in range(1, epochs + 1):
             # 训练
-            train_loss, train_acc = self.train_epoch(train_loader, correlations)
+            train_loss, train_acc = self.train_epoch(train_loader)
             
             # 验证
             val_loss, val_acc = self.validate(val_loader)
@@ -1086,7 +1140,13 @@ class Evaluator:
         all_probs = []
         
         with torch.no_grad():
-            for X, y in data_loader:
+            for batch_data in data_loader:
+                # 支持两种数据格式：(X, y) 或 (X, y, corr)
+                if len(batch_data) == 3:
+                    X, y, _ = batch_data
+                else:
+                    X, y = batch_data
+                
                 X = X.to(DEVICE)
                 
                 logits = model(X)
@@ -1248,12 +1308,24 @@ def main():
     # 加载数据
     print("\n[1] 加载数据...")
     splits = load_dataset(Path(args.data))
-    loaders = create_dataloaders(splits, batch_size=args.batch_size)
     
     X_train, y_train = splits['train']
     input_dim = X_train.shape[2]
     seq_len = X_train.shape[1]
     print(f"  输入维度: {input_dim}, 序列长度: {seq_len}")
+    
+    # 尝试加载相关系数（用于Smart-Transformer的协方差加权）
+    correlations = None
+    data_dir = Path(args.data)
+    corr_file = data_dir / 'correlations.npy'
+    if corr_file.exists():
+        print(f"  发现相关系数文件: {corr_file}")
+        corr_data = np.load(corr_file, allow_pickle=True).item()
+        if isinstance(corr_data, dict):
+            correlations = corr_data
+            print(f"  已加载相关系数 (train: {len(correlations.get('train', []))} 样本)")
+        else:
+            print(f"  [WARN] 相关系数格式不匹配，跳过")
     
     # 确定要训练的模型
     if 'all' in args.model:
@@ -1278,8 +1350,17 @@ def main():
         model = create_model(model_name, input_dim, seq_len)
         print(f"  参数量: {model.get_num_params():,}")
         
+        # 决定是否使用协方差加权
+        use_cov_weight = (model_name == 'smart_trans') and (correlations is not None)
+        
+        # 为Smart-Trans创建带相关系数的DataLoader，其他模型使用普通DataLoader
+        if use_cov_weight:
+            print("  启用协方差加权训练")
+            loaders = create_dataloaders(splits, batch_size=args.batch_size, correlations=correlations)
+        else:
+            loaders = create_dataloaders(splits, batch_size=args.batch_size)
+        
         # 训练
-        use_cov_weight = (model_name == 'smart_trans')
         trainer = Trainer(model, use_cov_weight=use_cov_weight)
         
         history = trainer.train(

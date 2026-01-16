@@ -83,7 +83,7 @@ def insert_ticker(records):
         return 0
     sql = """
         INSERT INTO ticker (ts, code, name, trade_time, sequence, price, volume, turnover, direction, ticker_type, push_data_type)
-        VALUES %s ON CONFLICT DO NOTHING
+        VALUES %s ON CONFLICT (trade_time, code, sequence) DO NOTHING
     """
     with conn.cursor() as cur:
         execute_values(cur, sql, records)

@@ -55,23 +55,32 @@ TRAIN_RATIO = 0.7           # 训练集70%
 VAL_RATIO = 0.15            # 验证集15%
 TEST_RATIO = 0.15           # 测试集15%
 
-# 特征列配置
+# 特征列配置（与11_feature_calculator.py对齐）
 FEATURE_COLS = [
     # 价格特征
     'spread_bps', 'return_pct',
-    # OFI特征
+    # OFI聚合特征
     'ofi_l1', 'ofi_l5', 'ofi_l10', 'smart_ofi',
-    # 滚动统计
+    # 分档OFI特征（各档独立OFI，用于SHAP分析）
+    'ofi_level_1', 'ofi_level_2', 'ofi_level_3', 'ofi_level_4', 'ofi_level_5',
+    'ofi_level_6', 'ofi_level_7', 'ofi_level_8', 'ofi_level_9', 'ofi_level_10',
+    # OFI滚动统计
     'ofi_ma_10', 'ofi_std_10', 'ofi_zscore',
     'smart_ofi_ma_10', 'smart_ofi_std_10', 'smart_ofi_zscore',
     'return_ma_10', 'return_std_10',
     # 深度特征
     'bid_depth_5', 'ask_depth_5', 'depth_imbalance_5',
     'bid_depth_10', 'ask_depth_10', 'depth_imbalance_10',
+    # 深度不平衡滚动统计
+    'depth_imb_ma_10', 'depth_imb_std_10', 'depth_imb_zscore',
     # 成交特征
     'buy_volume', 'sell_volume', 'trade_count', 'trade_imbalance',
-    # 协方差（可选）
-    'corr_stock_index'
+    # 成交不平衡滚动统计
+    'trade_imb_ma_10', 'trade_imb_std_10', 'trade_imb_zscore',
+    # 协方差
+    'cov_stock_index', 'corr_stock_index',
+    # 市场状态
+    'market_regime'
 ]
 
 # 数据路径

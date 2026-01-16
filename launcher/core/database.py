@@ -65,7 +65,7 @@ class DatabaseManager:
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
-            cursor.execute("SELECT ts::date as day, COUNT(*) as cnt FROM ticker GROUP BY ts::date")
+            cursor.execute("SELECT trade_time::date as day, COUNT(*) as cnt FROM ticker GROUP BY trade_time::date")
             result = {row[0].strftime("%Y-%m-%d"): row[1] for row in cursor.fetchall()}
             cursor.close()
             conn.close()
@@ -83,15 +83,15 @@ class DatabaseManager:
             conn = self.get_connection()
             cursor = conn.cursor()
             
-            # 使用范围查询（更快，能用索引）
+            # 使用范围查询（按 trade_time，能用索引和分区）
             start = f"{date_str} 00:00:00"
             end = f"{date_str} 23:59:59"
             
-            # 合并为一个查询获取 ticker 统计（含成交量、成交额）
+            # 统计 ticker（新主键确保 sequence 唯一，无需去重）
             cursor.execute("""
-                SELECT COUNT(*), MIN(ts), MAX(ts), 
+                SELECT COUNT(*), MIN(trade_time), MAX(trade_time),
                        COALESCE(SUM(volume), 0), COALESCE(SUM(turnover), 0)
-                FROM ticker WHERE ts BETWEEN %s AND %s
+                FROM ticker WHERE trade_time BETWEEN %s AND %s
             """, (start, end))
             row = cursor.fetchone()
             ticker_count = row[0]
@@ -110,7 +110,7 @@ class DatabaseManager:
             if ticker_count > 0:
                 cursor.execute("""
                     SELECT code, COUNT(*) as cnt FROM ticker 
-                    WHERE ts BETWEEN %s AND %s GROUP BY code ORDER BY cnt DESC
+                    WHERE trade_time BETWEEN %s AND %s GROUP BY code ORDER BY cnt DESC
                 """, (start, end))
                 stock_details = cursor.fetchall()
             

@@ -249,29 +249,21 @@ class CalendarView(ttk.Frame):
         orderbook = data["orderbook_count"]
         
         if ticker + orderbook > 0:
-            self._detail.insert("end", f"📅 {date_str}\n\n")
-            self._detail.insert("end", f"   📊 Ticker:     {ticker:>12,} 条\n")
-            self._detail.insert("end", f"   📈 OrderBook:  {orderbook:>12,} 条\n")
-            self._detail.insert("end", f"   ─────────────────────────\n")
-            self._detail.insert("end", f"   📦 合计:       {ticker + orderbook:>12,} 条\n\n")
-            
-            # 成交量和成交额
             vol = data.get("total_volume", 0)
             turnover = data.get("total_turnover", 0)
-            if vol > 0 or turnover > 0:
-                vol_str = f"{vol:,}" if vol < 100000000 else f"{vol/100000000:.2f}亿"
-                turnover_str = f"{turnover/100000000:.2f}亿" if turnover >= 100000000 else f"{turnover/10000:.2f}万"
-                self._detail.insert("end", f"   💹 总成交量:   {vol_str:>12}\n")
-                self._detail.insert("end", f"   💰 总成交额:   {turnover_str:>12}\n\n")
+            vol_str = f"{vol:,}" if vol < 100000000 else f"{vol/100000000:.2f}亿"
+            turnover_str = f"{turnover/100000000:.2f}亿" if turnover >= 100000000 else f"{turnover/10000:.2f}万"
             
             tr = data["time_range"]
-            if tr[0] and tr[1]:
-                self._detail.insert("end", f"   ⏰ 时段: {tr[0].strftime('%H:%M:%S')} ~ {tr[1].strftime('%H:%M:%S')}\n\n")
+            time_str = f"{tr[0].strftime('%H:%M:%S')} ~ {tr[1].strftime('%H:%M:%S')}" if tr[0] and tr[1] else "--"
             
-            if data["stock_details"]:
-                self._detail.insert("end", "   📋 按股票:\n")
-                for code, cnt in data["stock_details"]:
-                    self._detail.insert("end", f"      • {code}: {cnt:,}\n")
+            stocks = ", ".join([f"{code}: {cnt:,}" for code, cnt in data["stock_details"]]) if data["stock_details"] else "--"
+            
+            # 第1行：日期 + 时段 + 股票 + 合计
+            self._detail.insert("end", f"📅 {date_str}    ⏰ {time_str}    📋 按股票: {stocks}    📦 合计: {ticker + orderbook:,}\n\n")
+            
+            # 第2行：详细统计
+            self._detail.insert("end", f"📊 Ticker: {ticker:,}    📈 OrderBook: {orderbook:,}    💹 总成交量: {vol_str}    💰 总成交额: {turnover_str}\n")
         else:
             self._detail.insert("end", "📭 该日期暂无数据")
     

@@ -25,7 +25,7 @@ class MainView(ttk.Frame):
         # 标题
         header = ttk.Frame(self)
         header.pack(fill=X, pady=(10, 20))
-        ttk.Label(header, text="论文项目脚本启动器", 
+        ttk.Label(header, text="Paper Project 脚本启动器", 
                   font=("Microsoft YaHei", 18, "bold")).pack()
         ttk.Label(header, text="点击右侧按钮执行相应功能", 
                   foreground=COLORS["text_dim"]).pack(pady=(5, 0))

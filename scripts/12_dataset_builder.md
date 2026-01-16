@@ -18,7 +18,7 @@
 │                       数据集构建流程                             │
 ├─────────────────────────────────────────────────────────────────┤
 │  Step 1: 滑动窗口切片                                           │
-│          → 将时序数据切成 (T=100, F=25) 的输入序列               │
+│          → 将时序数据切成 (T=100, F=43) 的输入序列               │
 │                                                                 │
 │  Step 2: 时序数据划分                                           │
 │          → 训练70% / 验证15% / 测试15%                          │
@@ -66,7 +66,7 @@
 
 滑动窗口转换后（每行一个样本）:
 ┌────────────────────────────────────┬─────────┐
-│         X (T=100, F=25)            │    y    │
+│         X (T=100, F=43)            │    y    │
 ├────────────────────────────────────┼─────────┤
 │ [t1 features, t2, ..., t100]       │ label_120 │  ← Sample 1
 │ [t2 features, t3, ..., t101]       │ label_121 │  ← Sample 2
@@ -179,11 +179,11 @@ X_test = scaler.transform(X_test)    # 转换测试集（用训练集参数）
 
 ```
 dataset_T100_k20/
-├── X_train.npy      # (777, 100, 25) - 训练特征
+├── X_train.npy      # (777, 100, 43) - 训练特征
 ├── y_train.npy      # (777,) - 训练标签
-├── X_val.npy        # (167, 100, 25) - 验证特征
+├── X_val.npy        # (167, 100, 43) - 验证特征
 ├── y_val.npy        # (167,) - 验证标签
-├── X_test.npy       # (167, 100, 25) - 测试特征
+├── X_test.npy       # (167, 100, 43) - 测试特征
 ├── y_test.npy       # (167,) - 测试标签
 ├── scaler.pkl       # 标准化参数
 └── config.pkl       # 配置参数
@@ -195,7 +195,7 @@ dataset_T100_k20/
 X.shape = (N, T, F)
 # N = 样本数 (如777)
 # T = 序列长度 (100)
-# F = 特征数 (25)
+# F = 特征数 (43)
 
 y.shape = (N,)
 # 标签: 0=下跌(-1), 1=平稳(0), 2=上涨(+1)
@@ -210,14 +210,14 @@ dataset = torch.load('dataset_train.pt')
 
 # 获取一个样本
 x, y = dataset[0]
-print(x.shape)  # torch.Size([100, 25])
+print(x.shape)  # torch.Size([100, 43])
 print(y)        # tensor(1)  # 1=平稳
 
 # 创建DataLoader
 loader = DataLoader(dataset, batch_size=64, shuffle=True)
 
 for X_batch, y_batch in loader:
-    # X_batch: (64, 100, 25)
+    # X_batch: (64, 100, 43)
     # y_batch: (64,)
     outputs = model(X_batch)
     loss = criterion(outputs, y_batch)
@@ -227,35 +227,24 @@ for X_batch, y_batch in loader:
 
 ## 6. 特征列表
 
-本模块使用的25个特征：
+本模块使用的**43个特征**（与 `11_feature_calculator.py` 输出对齐）：
 
-| 类别 | 特征名 | 说明 |
-|------|--------|------|
-| **价格** | spread_bps | 买卖价差（基点）|
-| **价格** | return_pct | 收益率（%）|
-| **OFI** | ofi_l1 | 单档OFI |
-| **OFI** | ofi_l5 | 5档加权OFI |
-| **OFI** | ofi_l10 | 10档加权OFI |
-| **OFI** | smart_ofi | 承诺强度修正OFI |
-| **滚动** | ofi_ma_10 | OFI 10期均值 |
-| **滚动** | ofi_std_10 | OFI 10期标准差 |
-| **滚动** | ofi_zscore | OFI Z-score |
-| **滚动** | smart_ofi_ma_10 | Smart-OFI均值 |
-| **滚动** | smart_ofi_std_10 | Smart-OFI标准差 |
-| **滚动** | smart_ofi_zscore | Smart-OFI Z-score |
-| **滚动** | return_ma_10 | 收益率均值 |
-| **滚动** | return_std_10 | 收益率标准差 |
-| **深度** | bid_depth_5 | 买盘5档深度 |
-| **深度** | ask_depth_5 | 卖盘5档深度 |
-| **深度** | depth_imbalance_5 | 5档深度不平衡 |
-| **深度** | bid_depth_10 | 买盘10档深度 |
-| **深度** | ask_depth_10 | 卖盘10档深度 |
-| **深度** | depth_imbalance_10 | 10档深度不平衡 |
-| **成交** | buy_volume | 买方成交量 |
-| **成交** | sell_volume | 卖方成交量 |
-| **成交** | trade_count | 成交笔数 |
-| **成交** | trade_imbalance | 成交不平衡 |
-| **协方差** | corr_stock_index | 个股-指数相关系数 |
+| 类别 | 特征名 | 数量 | 说明 |
+|------|--------|------|------|
+| **价格** | `spread_bps`, `return_pct` | 2 | 价差、收益率 |
+| **OFI聚合** | `ofi_l1`, `ofi_l5`, `ofi_l10`, `smart_ofi` | 4 | 单档/多档/撤单率修正OFI |
+| **分档OFI** | `ofi_level_1` ~ `ofi_level_10` | 10 | 各档独立OFI（用于SHAP分析）|
+| **OFI滚动** | `ofi_ma_10`, `ofi_std_10`, `ofi_zscore` | 3 | OFI滚动统计 |
+| **Smart-OFI滚动** | `smart_ofi_ma_10`, `smart_ofi_std_10`, `smart_ofi_zscore` | 3 | Smart-OFI滚动统计 |
+| **收益率滚动** | `return_ma_10`, `return_std_10` | 2 | 收益率滚动统计 |
+| **深度** | `bid_depth_5`, `ask_depth_5`, `depth_imbalance_5` | 3 | 5档深度 |
+| **深度** | `bid_depth_10`, `ask_depth_10`, `depth_imbalance_10` | 3 | 10档深度 |
+| **深度不平衡滚动** | `depth_imb_ma_10`, `depth_imb_std_10`, `depth_imb_zscore` | 3 | 深度不平衡滚动统计 |
+| **成交** | `buy_volume`, `sell_volume`, `trade_count`, `trade_imbalance` | 4 | 成交量、成交不平衡 |
+| **成交不平衡滚动** | `trade_imb_ma_10`, `trade_imb_std_10`, `trade_imb_zscore` | 3 | 成交不平衡滚动统计 |
+| **协方差** | `cov_stock_index`, `corr_stock_index` | 2 | 动态协方差、相关系数 |
+| **市场状态** | `market_regime` | 1 | 市场状态 (0=平稳, 1=波动, 2=极端) |
+| **合计** | | **43** | |
 
 ---
 
@@ -340,7 +329,7 @@ for epoch in range(100):
 | 原始时间点 | 1,230 |
 | 生成样本数 | 1,111 |
 | 序列长度 | 100 |
-| 特征维度 | 25 |
+| 特征维度 | 43 |
 
 ### 8.2 数据集划分
 

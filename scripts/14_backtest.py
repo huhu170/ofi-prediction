@@ -536,7 +536,12 @@ class BacktestEngine:
         
         # 时间序列
         result.equity_curve = self.equity_curve
-        result.drawdown_curve = list(drawdown) if len(returns) > 0 else []
+        # 确保 drawdown_curve 与 equity_curve 长度一致
+        if len(returns) > 0:
+            # drawdown 已经与 equity 长度一致，直接使用
+            result.drawdown_curve = list(drawdown)
+        else:
+            result.drawdown_curve = [0.0] * len(self.equity_curve)
         result.timestamps = self.timestamps
         result.trades = self.trades
         
@@ -557,6 +562,9 @@ def plot_backtest_result(result: BacktestResult, save_path: Path = None):
     
     timestamps = result.timestamps
     
+    # 建立时间戳到索引的映射（O(1)查找）
+    ts_to_idx = {ts: i for i, ts in enumerate(timestamps)}
+    
     # 1. 权益曲线
     ax1 = axes[0]
     ax1.plot(timestamps, result.equity_curve, 'b-', linewidth=1, label='策略权益')
@@ -566,11 +574,11 @@ def plot_backtest_result(result: BacktestResult, save_path: Path = None):
     ax1.legend(loc='upper left')
     ax1.grid(True, alpha=0.3)
     
-    # 标记交易点
+    # 标记交易点（使用O(1)查找）
     for trade in result.trades:
         color = 'green' if trade.side == 'BUY' else 'red'
         marker = '^' if trade.side == 'BUY' else 'v'
-        idx = timestamps.index(trade.timestamp) if trade.timestamp in timestamps else -1
+        idx = ts_to_idx.get(trade.timestamp, -1)
         if idx >= 0:
             ax1.scatter(trade.timestamp, result.equity_curve[idx], color=color, marker=marker, s=50, zorder=5)
     
@@ -736,9 +744,13 @@ def run_backtest(
         prices = df['mid_price'].values[-len(X_test):]
         timestamps = pd.to_datetime(df['ts']).tolist()[-len(X_test):]
     else:
-        # 使用模拟价格
+        # 使用模拟价格和时间戳
+        print("  [WARN] 未找到特征文件，使用模拟数据")
+        np.random.seed(42)  # 保证可复现
         prices = np.cumsum(np.random.randn(len(X_test)) * 0.1) + 400
-        timestamps = [datetime.now() for _ in range(len(X_test))]
+        # 生成递增的模拟时间戳（每10秒一个）
+        base_time = datetime(2024, 1, 2, 9, 30, 0)
+        timestamps = [base_time + pd.Timedelta(seconds=10*i) for i in range(len(X_test))]
     
     # 确保长度匹配
     min_len = min(len(prices), len(X_test))

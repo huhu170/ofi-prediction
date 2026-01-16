@@ -100,12 +100,12 @@
 
 ```powershell
 # 执行建表SQL
-psql -U postgres -d futu_ofi -f "D:\论文项目\database\02_create_tables.sql"
+psql -U postgres -d futu_ofi -f "D:\paper project\database\02_create_tables.sql"
 ```
 
 或者在 psql 中：
 ```sql
-\i 'D:/论文项目/database/02_create_tables.sql'
+\i 'D:/paper project/database/02_create_tables.sql'
 ```
 
 ---

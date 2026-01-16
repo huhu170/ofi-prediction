@@ -1,6 +1,6 @@
 # -*- mode: python ; coding: utf-8 -*-
 """
-论文项目脚本启动器 - PyInstaller 打包配置
+Paper Project 脚本启动器 - PyInstaller 打包配置
 """
 
 import os
@@ -92,7 +92,7 @@ exe = EXE(
     a.binaries,
     a.datas,
     [],
-    name='论文项目启动器',
+    name='Paper Project 启动器',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

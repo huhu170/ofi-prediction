@@ -331,10 +331,27 @@ class GradientSHAPAnalyzer:
     对于神经网络模型，使用GradientExplainer更高效
     """
     
-    def __init__(self, model, feature_names: List[str] = None):
+    def __init__(self, model, feature_names: List[str] = None, num_features: int = None):
         self.model = model
-        self.feature_names = feature_names or FEATURE_NAMES
+        self.num_features = num_features  # 会在分析时动态确定
+        # 如果提供了特征名，使用它；否则使用默认的或动态生成
+        self._custom_feature_names = feature_names
         self.model.eval()
+    
+    def _get_feature_names(self, num_features: int) -> List[str]:
+        """获取特征名称，支持动态数量"""
+        if self._custom_feature_names is not None:
+            if len(self._custom_feature_names) >= num_features:
+                return self._custom_feature_names[:num_features]
+            else:
+                # 扩展特征名
+                extended = self._custom_feature_names + [f'feature_{i}' for i in range(len(self._custom_feature_names), num_features)]
+                return extended
+        elif num_features <= len(FEATURE_NAMES):
+            return FEATURE_NAMES[:num_features]
+        else:
+            # 动态生成特征名
+            return FEATURE_NAMES + [f'feature_{i}' for i in range(len(FEATURE_NAMES), num_features)]
     
     def compute_gradients(self, X: np.ndarray, target_class: int = 2) -> np.ndarray:
         """
@@ -415,13 +432,14 @@ class GradientSHAPAnalyzer:
         # 对时间和样本维度取平均
         feature_importance = np.abs(ig).mean(axis=(0, 1))
         
-        num_features = min(len(feature_importance), len(self.feature_names))
+        num_features = len(feature_importance)
+        feature_names = self._get_feature_names(num_features)
         
         df = pd.DataFrame({
-            'feature': self.feature_names[:num_features],
-            'feature_cn': [FEATURE_NAMES_CN.get(f, f) for f in self.feature_names[:num_features]],
-            'importance': feature_importance[:num_features],
-            'importance_pct': feature_importance[:num_features] / feature_importance[:num_features].sum() * 100
+            'feature': feature_names,
+            'feature_cn': [FEATURE_NAMES_CN.get(f, f) for f in feature_names],
+            'importance': feature_importance,
+            'importance_pct': feature_importance / feature_importance.sum() * 100
         })
         
         df = df.sort_values('importance', ascending=False).reset_index(drop=True)
@@ -482,19 +500,21 @@ def plot_temporal_importance(
     if not HAS_PLOT:
         return
     
+    seq_len = len(temporal_importance)
     fig, ax = plt.subplots(figsize=(12, 4))
     
-    x = np.arange(len(temporal_importance))
+    x = np.arange(seq_len)
     ax.fill_between(x, 0, temporal_importance, alpha=0.3)
     ax.plot(x, temporal_importance, linewidth=1)
     
-    ax.set_xlabel('时间步 (t-100 到 t)')
+    # 动态设置x轴标签
+    ax.set_xlabel(f'时间步 (t-{seq_len} 到 t)')
     ax.set_ylabel('平均 |SHAP|')
     ax.set_title(title)
     ax.grid(True, alpha=0.3)
     
     # 标注最近的时间步更重要
-    ax.axvline(x=len(temporal_importance)-1, color='red', linestyle='--', alpha=0.5, label='当前时刻')
+    ax.axvline(x=seq_len-1, color='red', linestyle='--', alpha=0.5, label='当前时刻')
     ax.legend()
     
     plt.tight_layout()
@@ -618,11 +638,24 @@ def run_shap_analysis(
     if use_gradient:
         analyzer = GradientSHAPAnalyzer(model)
         
+        # 智能检测标签格式
+        y_min, y_max = y_analysis.min(), y_analysis.max()
+        if y_min == -1 and y_max == 1:
+            # 标签格式: -1, 0, 1
+            label_map = {0: -1, 1: 0, 2: 1}  # class_idx -> label
+        elif y_min == 0 and y_max == 2:
+            # 标签格式: 0, 1, 2
+            label_map = {0: 0, 1: 1, 2: 2}
+        else:
+            print(f"  [WARN] 非预期标签范围 [{y_min}, {y_max}]，假设为0,1,2格式")
+            label_map = {0: 0, 1: 1, 2: 2}
+        
         # 分类别计算
         importance_by_class = {}
         for class_idx, class_name in enumerate(['下跌', '平稳', '上涨']):
             print(f"  计算 {class_name} 类的特征重要性...")
-            mask = y_analysis == (class_idx - 1)  # -1, 0, 1
+            target_label = label_map[class_idx]
+            mask = y_analysis == target_label
             if mask.sum() > 0:
                 X_class = X_analysis[mask][:min(50, mask.sum())]
                 importance_df = analyzer.get_feature_importance(X_class, target_class=class_idx)

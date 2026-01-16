@@ -1,5 +1,5 @@
 """
-论文项目脚本启动器 v3.1
+Paper Project 脚本启动器 v3.1
 模块化架构
 """
 
@@ -35,7 +35,7 @@ class LauncherApp(ttkb.Window):
     def __init__(self):
         super().__init__(themename="superhero")
         
-        self.title("论文项目脚本启动器")
+        self.title("Paper Project 脚本启动器")
         self.geometry("1100x750")
         self.minsize(900, 550)
         
@@ -67,13 +67,18 @@ class LauncherApp(ttkb.Window):
         main = ttk.Frame(self, padding=12)
         main.pack(fill=BOTH, expand=YES)
         
+        # 使用 grid 布局实现比例分配
+        main.columnconfigure(0, weight=4)  # 内容区 80%
+        main.columnconfigure(1, weight=1)  # sidebar 20%
+        main.rowconfigure(0, weight=1)
+        
         # 左侧内容区
         self.content = ttk.Frame(main)
-        self.content.pack(side=LEFT, fill=BOTH, expand=YES, padx=(0, 12))
+        self.content.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
         
         # 右侧菜单栏
         self.sidebar = Sidebar(main, self)
-        self.sidebar.pack(side=RIGHT, fill=Y)
+        self.sidebar.grid(row=0, column=1, sticky="nsew")
     
     # ============================================================
     # 公共接口（供 Sidebar 调用）
@@ -100,13 +105,17 @@ class LauncherApp(ttkb.Window):
             self._main_view = view
             
         elif name == "calendar":
-            # 标题栏 + 刷新按钮
+            # 标题栏 + 刷新按钮（居中）
             title_frame = ttk.Frame(self.content)
             title_frame.pack(fill=X, pady=(10, 8))
-            ttk.Label(title_frame, text="📅  数据采集日历", 
+            
+            # 使用内部 frame 居中
+            center_frame = ttk.Frame(title_frame)
+            center_frame.pack(expand=True)
+            ttk.Label(center_frame, text="📅  数据采集日历", 
                       font=("Microsoft YaHei", 18, "bold")).pack(side=LEFT, padx=10)
             self._calendar_view = CalendarView(self.content, db_manager)
-            ttk.Button(title_frame, text="🔄 刷新", width=8, style="info-outline.TButton",
+            ttk.Button(center_frame, text="🔄 刷新", width=8, style="info-outline.TButton",
                        command=self._calendar_view.refresh).pack(side=LEFT, padx=10)
             self._calendar_view.pack(fill=BOTH, expand=YES, padx=5, pady=5)
             

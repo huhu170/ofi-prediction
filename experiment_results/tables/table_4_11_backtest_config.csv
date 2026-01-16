@@ -1,0 +1,13 @@
+﻿,参数类别,参数名,取值,说明
+0,初始资金,initial_capital,"1,000,000 HKD",初始资金100万港币
+1,交易成本,commission_rate,0.03%,单边佣金率
+2,交易成本,slippage_bps,1 bps,滑点（基点）
+3,交易成本,total_cost,~0.05%,综合交易成本
+4,仓位管理,position_size,30%,单次交易仓位
+5,仓位管理,max_position,100%,最大持仓比例
+6,风控参数,stop_loss_pct,2%,止损比例
+7,风控参数,take_profit_pct,5%,止盈比例
+8,信号阈值,min_confidence,50%,最小预测置信度
+9,信号阈值,min_trade_interval,60秒,最小交易间隔
+10,执行延迟,execution_delay,300ms,API延迟+计算延迟
+11,回测周期,test_period,5天,样本外测试期

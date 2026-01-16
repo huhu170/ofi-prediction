@@ -20,7 +20,7 @@ import io
 import argparse
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, List, Dict, Tuple
+from typing import Optional, List, Dict, Tuple, Any
 
 # 解决Windows编码问题
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
@@ -70,27 +70,43 @@ class OFICalculator:
     
     特征层级:
     1. OFI-L1: 单档OFI（第1档）
-    2. OFI-L5: 5档加权OFI（指数衰减）
+    2. OFI-L5: 5档加权OFI
     3. OFI-L10: 10档加权OFI
     4. Smart-OFI: 承诺强度修正的OFI
+    
+    支持三种深度加权方案:
+    - exponential: 指数衰减 w_k = exp(-α×k)，远档快速衰减（默认）
+    - linear: 线性衰减 w_k = K-k+1，平缓下降
+    - equal: 等权重 w_k = 1/K，所有档位同等重要
     """
     
-    def __init__(self, decay_alpha: float = DECAY_ALPHA):
+    # 支持的加权方案
+    WEIGHT_METHODS = ['exponential', 'linear', 'equal']
+    
+    def __init__(self, decay_alpha: float = DECAY_ALPHA, weight_method: str = 'exponential'):
         """
         初始化OFI计算器
         
         Args:
-            decay_alpha: 深度衰减系数，越大衰减越快
+            decay_alpha: 深度衰减系数（仅用于指数衰减），越大衰减越快
+            weight_method: 加权方案 'exponential' | 'linear' | 'equal'
         """
+        if weight_method not in self.WEIGHT_METHODS:
+            raise ValueError(f"weight_method must be one of {self.WEIGHT_METHODS}, got '{weight_method}'")
+        
         self.decay_alpha = decay_alpha
+        self.weight_method = weight_method
         self.weights_5 = self._compute_weights(5)
         self.weights_10 = self._compute_weights(10)
         
     def _compute_weights(self, n_levels: int) -> np.ndarray:
         """
-        计算深度衰减权重（指数衰减）
+        计算深度加权权重
         
-        w_k = exp(-α × k), 归一化使得 Σw_k = 1
+        三种方案:
+        - exponential: w_k = exp(-α × k), 归一化使得 Σw_k = 1
+        - linear: w_k = (K - k + 1) / Σi, 线性递减
+        - equal: w_k = 1/K, 等权重
         
         Args:
             n_levels: 档位数量
@@ -98,8 +114,35 @@ class OFICalculator:
         Returns:
             归一化的权重数组
         """
-        weights = np.array([np.exp(-self.decay_alpha * k) for k in range(1, n_levels + 1)])
+        if self.weight_method == 'exponential':
+            # 指数衰减: 第1档权重最高，快速衰减
+            weights = np.array([np.exp(-self.decay_alpha * k) for k in range(1, n_levels + 1)])
+        elif self.weight_method == 'linear':
+            # 线性衰减: 第1档权重最高，平缓下降
+            weights = np.array([n_levels - k + 1 for k in range(1, n_levels + 1)], dtype=float)
+        elif self.weight_method == 'equal':
+            # 等权重: 所有档位同等重要
+            weights = np.ones(n_levels)
+        else:
+            raise ValueError(f"Unknown weight_method: {self.weight_method}")
+        
         return weights / weights.sum()
+    
+    def get_weights_info(self) -> str:
+        """
+        获取当前权重配置信息（用于打印和日志）
+        
+        Returns:
+            格式化的权重信息字符串
+        """
+        info_lines = [
+            f"深度加权方案: {self.weight_method}",
+            f"  5档权重: [{', '.join(f'{w:.3f}' for w in self.weights_5)}]",
+            f"  10档权重: [{', '.join(f'{w:.3f}' for w in self.weights_10)}]",
+        ]
+        if self.weight_method == 'exponential':
+            info_lines.insert(1, f"  衰减系数α: {self.decay_alpha}")
+        return '\n'.join(info_lines)
     
     def compute_delta_volumes(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -175,110 +218,194 @@ class OFICalculator:
         
         return ofi_multi
     
-    def compute_commitment_weight(self, df: pd.DataFrame) -> pd.Series:
+    def compute_cancellation_rate(self, df: pd.DataFrame, level: int = 1) -> pd.Series:
         """
-        计算"承诺强度"权重（用于Smart-OFI）
+        计算第k档的撤单率（Cancellation Rate）- 混合估计方法
         
-        基于挂单量变化与订单数变化的关系推断订单质量:
-        - 量增+笔数减: 大单进入，高承诺 → weight=1.5
-        - 量增+笔数增: 正常挂单，中等承诺 → weight=1.0
-        - 量减+笔数减: 正常撤单，低承诺 → weight=0.5
-        - 其他: 订单重组 → weight=0.8
+        基于论文公式(2.2-3)的定义：
+        CR_k = 撤单量 / 挂单量
+        
+        混合估计策略（解决"挂单量减少≠撤单"的问题）：
+        
+        1. 如果有订单数数据（bid*_orders）：
+           - 量减+笔数减：正常撤单或成交消耗，CR = |Δvol| / prev_vol × 0.5
+           - 量减+笔数增/不变：主要是成交消耗（大单被拆分），CR = |Δvol| / prev_vol × 0.2
+           - 量增+笔数减：大单进入，CR = 0（高质量，负撤单率效果）
+           - 量增+笔数增：正常挂单，CR = 0
+        
+        2. 如果没有订单数数据：
+           - 使用挂单量变化波动率作为代理
+           - 高波动率 → 频繁撤单 → 高CR
         
         Args:
             df: 包含订单簿数据的DataFrame
+            level: 档位（1-10）
             
         Returns:
-            承诺强度权重序列
+            撤单率序列（0-1之间）
         """
-        # 检查是否有订单数列（bid1_orders）
-        has_orders = 'bid1_orders' in df.columns
+        bid_vol_col = f'bid{level}_vol'
+        ask_vol_col = f'ask{level}_vol'
+        bid_orders_col = f'bid{level}_orders'
+        ask_orders_col = f'ask{level}_orders'
         
-        if not has_orders:
-            # 如果没有订单数数据，使用替代方案：基于深度变化波动率
-            return self._compute_volatility_weight(df)
+        has_orders = bid_orders_col in df.columns
         
-        # 计算订单数变化
-        df = df.copy()
-        df['delta_bid1_orders'] = df['bid1_orders'].diff()
-        df['delta_ask1_orders'] = df['ask1_orders'].diff() if 'ask1_orders' in df.columns else 0
+        cr_bid = pd.Series(0.0, index=df.index)
+        cr_ask = pd.Series(0.0, index=df.index)
         
-        # 计算挂单量变化
-        delta_vol = df['delta_bid1_vol'].fillna(0) - df['delta_ask1_vol'].fillna(0)
-        delta_orders = df['delta_bid1_orders'].fillna(0) - df.get('delta_ask1_orders', 0)
+        # ========== 买盘撤单率 ==========
+        if bid_vol_col in df.columns:
+            prev_bid_vol = df[bid_vol_col].shift(1).fillna(0)
+            delta_bid_vol = df[bid_vol_col] - prev_bid_vol
+            
+            if has_orders:
+                # 方法1：结合订单数信息
+                prev_bid_orders = df[bid_orders_col].shift(1).fillna(0)
+                delta_bid_orders = df[bid_orders_col] - prev_bid_orders
+                
+                # 量减+笔数减：可能是撤单或成交
+                mask_both_decrease = (delta_bid_vol < 0) & (delta_bid_orders < 0)
+                cr_bid[mask_both_decrease] = np.abs(delta_bid_vol[mask_both_decrease]) / (prev_bid_vol[mask_both_decrease] + 1e-8) * 0.5
+                
+                # 量减+笔数不变或增加：主要是成交消耗
+                mask_vol_down_orders_up = (delta_bid_vol < 0) & (delta_bid_orders >= 0)
+                cr_bid[mask_vol_down_orders_up] = np.abs(delta_bid_vol[mask_vol_down_orders_up]) / (prev_bid_vol[mask_vol_down_orders_up] + 1e-8) * 0.2
+                
+                # 量增+笔数减：大单进入（高质量信号，负CR效果）
+                # 这里设为负值，使得 (1-CR) > 1，放大高质量信号
+                mask_big_order = (delta_bid_vol > 0) & (delta_bid_orders < 0)
+                cr_bid[mask_big_order] = -0.3  # 承诺权重 = 1.3
+            else:
+                # 方法2：纯粹基于挂单量减少（fallback）
+                mask_decrease = delta_bid_vol < 0
+                cr_bid[mask_decrease] = np.abs(delta_bid_vol[mask_decrease]) / (prev_bid_vol[mask_decrease] + 1e-8) * 0.5
+            
+            cr_bid = cr_bid.clip(-0.5, 1)  # 允许负值（放大高质量信号）
         
-        # 计算承诺强度权重
-        weight = pd.Series(1.0, index=df.index)
+        # ========== 卖盘撤单率 ==========
+        if ask_vol_col in df.columns:
+            prev_ask_vol = df[ask_vol_col].shift(1).fillna(0)
+            delta_ask_vol = df[ask_vol_col] - prev_ask_vol
+            
+            if has_orders and ask_orders_col in df.columns:
+                prev_ask_orders = df[ask_orders_col].shift(1).fillna(0)
+                delta_ask_orders = df[ask_orders_col] - prev_ask_orders
+                
+                mask_both_decrease = (delta_ask_vol < 0) & (delta_ask_orders < 0)
+                cr_ask[mask_both_decrease] = np.abs(delta_ask_vol[mask_both_decrease]) / (prev_ask_vol[mask_both_decrease] + 1e-8) * 0.5
+                
+                mask_vol_down_orders_up = (delta_ask_vol < 0) & (delta_ask_orders >= 0)
+                cr_ask[mask_vol_down_orders_up] = np.abs(delta_ask_vol[mask_vol_down_orders_up]) / (prev_ask_vol[mask_vol_down_orders_up] + 1e-8) * 0.2
+                
+                mask_big_order = (delta_ask_vol > 0) & (delta_ask_orders < 0)
+                cr_ask[mask_big_order] = -0.3
+            else:
+                mask_decrease = delta_ask_vol < 0
+                cr_ask[mask_decrease] = np.abs(delta_ask_vol[mask_decrease]) / (prev_ask_vol[mask_decrease] + 1e-8) * 0.5
+            
+            cr_ask = cr_ask.clip(-0.5, 1)
         
-        # 量增+笔数减: 大单进入（高承诺）
-        mask_big_order = (delta_vol > 0) & (delta_orders < 0)
-        weight[mask_big_order] = 1.5
+        # 取买卖盘撤单率的平均
+        cr = (cr_bid + cr_ask) / 2
         
-        # 量增+笔数增: 正常挂单
-        mask_normal = (delta_vol > 0) & (delta_orders >= 0)
-        weight[mask_normal] = 1.0
-        
-        # 量减: 可能是撤单（低承诺）
-        mask_withdraw = delta_vol < 0
-        weight[mask_withdraw] = 0.5
-        
-        # 量不变但笔数变化: 订单重组
-        mask_reorg = (delta_vol == 0) & (delta_orders != 0)
-        weight[mask_reorg] = 0.8
-        
-        return weight
+        return cr
     
-    def _compute_volatility_weight(self, df: pd.DataFrame, window: int = 10) -> pd.Series:
+    def compute_cancellation_weights(self, df: pd.DataFrame, n_levels: int = 5) -> Dict[int, pd.Series]:
         """
-        替代方案：基于深度变化波动率计算权重
+        计算各档的承诺权重（1 - CR_k）
         
-        高波动率档位可能存在频繁撤单，给予较低权重
+        基于论文公式(2.2-3)：
+        承诺权重 = (1 - CR_k)
+        撤单率越高，权重越低
         
         Args:
             df: 订单簿数据
-            window: 滚动窗口大小
+            n_levels: 计算档位数（默认5档）
             
         Returns:
-            稳定性权重序列
+            {档位: 承诺权重序列} 的字典
         """
-        # 计算买盘深度变化的滚动波动率
-        volatility = df['delta_bid1_vol'].rolling(window).std().fillna(1)
+        commitment_weights = {}
         
-        # 波动率越高，权重越低
-        # 使用 1 / (1 + volatility/median) 进行归一化
-        median_vol = volatility.median()
-        if median_vol > 0:
-            weight = 1.0 / (1.0 + volatility / median_vol)
-        else:
-            weight = pd.Series(1.0, index=df.index)
+        for k in range(1, n_levels + 1):
+            cr_k = self.compute_cancellation_rate(df, level=k)
+            commitment_weights[k] = 1.0 - cr_k
         
-        # 限制在 [0.3, 1.5] 范围内
-        weight = weight.clip(0.3, 1.5)
-        
-        return weight
+        return commitment_weights
     
-    def compute_smart_ofi(self, df: pd.DataFrame) -> pd.Series:
+    def compute_smart_ofi(self, df: pd.DataFrame, n_levels: int = 5) -> pd.Series:
         """
-        计算Smart-OFI（承诺强度修正的OFI）
+        计算Smart-OFI（撤单率修正的有效OFI）
         
-        Smart-OFI = commitment_weight × OFI_L5
+        基于论文公式(2.2-3)：
+        OFI_t^{effective} = Σ(k=1 to K) (1 - CR_k) × OFI_t^(k)
+        
+        其中：
+        - CR_k = 第k档的撤单率
+        - (1 - CR_k) = 承诺权重，撤单率越高权重越低
+        - OFI_t^(k) = 第k档的订单流失衡
         
         Args:
             df: 订单簿数据
+            n_levels: 计算档位数（默认5档）
             
         Returns:
             Smart-OFI序列
         """
-        ofi_l5 = self.compute_ofi_multi(df, n_levels=5)
-        commitment = self.compute_commitment_weight(df)
+        # 计算各档的承诺权重
+        commitment_weights = self.compute_cancellation_weights(df, n_levels)
         
-        smart_ofi = commitment * ofi_l5
+        # 计算撤单率修正的OFI
+        smart_ofi = pd.Series(0.0, index=df.index)
+        
+        for k in range(1, n_levels + 1):
+            delta_bid_col = f'delta_bid{k}_vol'
+            delta_ask_col = f'delta_ask{k}_vol'
+            
+            if delta_bid_col in df.columns and delta_ask_col in df.columns:
+                # 第k档的OFI
+                ofi_k = df[delta_bid_col].fillna(0) - df[delta_ask_col].fillna(0)
+                # 乘以承诺权重（1 - CR_k）
+                smart_ofi += commitment_weights[k] * ofi_k
         
         return smart_ofi
+    
+    def compute_level_ofi(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        计算各档独立的OFI特征（ofi_level_1 到 ofi_level_10）
+        
+        基于论文公式(2.2-1)中的单档OFI定义：
+        OFI_t^(k) = Δbid_k_vol(t) - Δask_k_vol(t)
+        
+        Args:
+            df: 包含delta_vol列的DataFrame
+            
+        Returns:
+            添加了ofi_level_1..10列的DataFrame
+        """
+        df = df.copy()
+        
+        for k in range(1, 11):
+            delta_bid_col = f'delta_bid{k}_vol'
+            delta_ask_col = f'delta_ask{k}_vol'
+            
+            if delta_bid_col in df.columns and delta_ask_col in df.columns:
+                df[f'ofi_level_{k}'] = df[delta_bid_col].fillna(0) - df[delta_ask_col].fillna(0)
+            else:
+                df[f'ofi_level_{k}'] = 0.0
+        
+        return df
     
     def compute_all_ofi_features(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         计算所有OFI特征
+        
+        特征体系（与论文对齐）：
+        1. 基础OFI (OFI-L1): 单档订单流不平衡
+        2. 多档加权OFI (OFI-L5, OFI-L10): 深度衰减加权
+        3. 分档OFI (ofi_level_1..10): 各档独立OFI
+        4. Smart-OFI: 基于撤单率(1-CR_k)修正的有效OFI
         
         Args:
             df: 清洗后的订单簿数据
@@ -289,11 +416,19 @@ class OFICalculator:
         # 先计算各档变化量
         df = self.compute_delta_volumes(df)
         
-        # 计算各类OFI
+        # 1. 基础OFI（第1档）
         df['ofi_l1'] = self.compute_ofi_l1(df)
+        
+        # 2. 多档加权OFI（指数衰减）
         df['ofi_l5'] = self.compute_ofi_multi(df, n_levels=5)
         df['ofi_l10'] = self.compute_ofi_multi(df, n_levels=10)
-        df['smart_ofi'] = self.compute_smart_ofi(df)
+        
+        # 3. 分档独立OFI（ofi_level_1 到 ofi_level_10）
+        df = self.compute_level_ofi(df)
+        
+        # 4. Smart-OFI（撤单率修正）
+        # 按照论文公式(2.2-3): OFI^{effective} = Σ(1-CR_k) × OFI^(k)
+        df['smart_ofi'] = self.compute_smart_ofi(df, n_levels=5)
         
         return df
 
@@ -344,15 +479,198 @@ class RollingFeatureCalculator:
             df['return_ma_10'] = df['return_pct'].rolling(self.window).mean()
             df['return_std_10'] = df['return_pct'].rolling(self.window).std()
         
-        # 深度不平衡的滚动统计
+        # 深度不平衡的滚动统计（MA、STD、Z-score）
         if 'depth_imbalance_5' in df.columns:
             df['depth_imb_ma_10'] = df['depth_imbalance_5'].rolling(self.window).mean()
-        
-        # 成交不平衡的滚动统计
+            df['depth_imb_std_10'] = df['depth_imbalance_5'].rolling(self.window).std()
+            df['depth_imb_zscore'] = (df['depth_imbalance_5'] - df['depth_imb_ma_10']) / (df['depth_imb_std_10'] + 1e-8)
+
+        # 成交不平衡的滚动统计（MA、STD、Z-score）
         if 'trade_imbalance' in df.columns:
             df['trade_imb_ma_10'] = df['trade_imbalance'].rolling(self.window).mean()
-        
+            df['trade_imb_std_10'] = df['trade_imbalance'].rolling(self.window).std()
+            df['trade_imb_zscore'] = (df['trade_imbalance'] - df['trade_imb_ma_10']) / (df['trade_imb_std_10'] + 1e-8)
+
         return df
+
+
+# ============================================================
+# 市场状态检测器
+# ============================================================
+
+class MarketRegimeDetector:
+    """
+    市场状态检测器
+    
+    检测市场当前处于什么状态，不同状态下OFI信号含义可能不同：
+    - regime=0: 平稳期（低波动、正常流动性）
+    - regime=1: 波动期（高波动、流动性变化）
+    - regime=2: 极端期（极端波动、流动性枯竭）
+    
+    支持两种检测方法：
+    1. 基于规则的阈值方法（默认，无需额外依赖）
+    2. HMM隐马尔可夫模型（需要hmmlearn库）
+    """
+    
+    def __init__(
+        self,
+        method: str = 'threshold',  # 'threshold' 或 'hmm'
+        volatility_window: int = 50,
+        n_regimes: int = 3
+    ):
+        """
+        Args:
+            method: 检测方法 ('threshold'=基于阈值, 'hmm'=隐马尔可夫)
+            volatility_window: 波动率计算窗口
+            n_regimes: 状态数量（默认3：平稳/波动/极端）
+        """
+        self.method = method
+        self.volatility_window = volatility_window
+        self.n_regimes = n_regimes
+        self.hmm_model = None
+    
+    def detect_regime_threshold(self, df: pd.DataFrame) -> pd.Series:
+        """
+        基于阈值的市场状态检测
+        
+        使用波动率和价差的分位数来划分状态：
+        - 波动率 < 50%分位 且 价差 < 50%分位 → 平稳期(0)
+        - 波动率 > 75%分位 或 价差 > 75%分位 → 波动期(1)
+        - 波动率 > 95%分位 或 价差 > 95%分位 → 极端期(2)
+        
+        Args:
+            df: 包含return_pct和spread_bps的DataFrame
+            
+        Returns:
+            市场状态序列 (0/1/2)
+        """
+        regime = pd.Series(0, index=df.index)  # 默认平稳期
+        
+        # 计算滚动波动率
+        if 'return_pct' in df.columns:
+            volatility = df['return_pct'].rolling(self.volatility_window).std().fillna(0)
+            vol_median = volatility.median()
+            vol_75 = volatility.quantile(0.75)
+            vol_95 = volatility.quantile(0.95)
+        else:
+            volatility = pd.Series(0, index=df.index)
+            vol_median = vol_75 = vol_95 = 0
+        
+        # 价差作为流动性指标
+        if 'spread_bps' in df.columns:
+            spread = df['spread_bps']
+            spread_median = spread.median()
+            spread_75 = spread.quantile(0.75)
+            spread_95 = spread.quantile(0.95)
+        else:
+            spread = pd.Series(0, index=df.index)
+            spread_median = spread_75 = spread_95 = 0
+        
+        # 状态判断
+        # 波动期：波动率或价差超过75%分位
+        mask_volatile = (volatility > vol_75) | (spread > spread_75)
+        regime[mask_volatile] = 1
+        
+        # 极端期：波动率或价差超过95%分位
+        mask_extreme = (volatility > vol_95) | (spread > spread_95)
+        regime[mask_extreme] = 2
+        
+        return regime
+    
+    def detect_regime_hmm(self, df: pd.DataFrame) -> pd.Series:
+        """
+        基于HMM的市场状态检测
+        
+        使用隐马尔可夫模型自动发现市场状态
+        
+        Args:
+            df: 包含特征的DataFrame
+            
+        Returns:
+            市场状态序列
+        """
+        try:
+            from hmmlearn.hmm import GaussianHMM
+        except ImportError:
+            print("  警告：未安装hmmlearn库，回退到阈值方法")
+            print("  可通过 pip install hmmlearn 安装")
+            return self.detect_regime_threshold(df)
+        
+        # 准备特征
+        features = []
+        if 'return_std_10' in df.columns:
+            features.append('return_std_10')
+        elif 'return_pct' in df.columns:
+            df['_vol_temp'] = df['return_pct'].rolling(10).std()
+            features.append('_vol_temp')
+        
+        if 'spread_bps' in df.columns:
+            features.append('spread_bps')
+        
+        if 'depth_imbalance_5' in df.columns:
+            features.append('depth_imbalance_5')
+        
+        if not features:
+            print("  警告：缺少必要特征，回退到阈值方法")
+            return self.detect_regime_threshold(df)
+        
+        # 准备数据
+        X = df[features].dropna().values
+        if len(X) < 100:
+            print("  警告：数据量不足，回退到阈值方法")
+            return self.detect_regime_threshold(df)
+        
+        # 训练HMM
+        try:
+            self.hmm_model = GaussianHMM(
+                n_components=self.n_regimes,
+                covariance_type='diag',
+                n_iter=100,
+                random_state=42
+            )
+            self.hmm_model.fit(X)
+            
+            # 预测状态
+            states = self.hmm_model.predict(X)
+            
+            # 映射回原索引
+            regime = pd.Series(0, index=df.index)
+            valid_idx = df[features].dropna().index
+            regime.loc[valid_idx] = states
+            
+            # 按波动率均值重新排序状态（确保0=平稳, 2=极端）
+            state_vols = {}
+            for s in range(self.n_regimes):
+                mask = regime == s
+                if mask.sum() > 0 and 'return_std_10' in df.columns:
+                    state_vols[s] = df.loc[mask, 'return_std_10'].mean()
+                else:
+                    state_vols[s] = s
+            
+            sorted_states = sorted(state_vols.keys(), key=lambda x: state_vols[x])
+            state_mapping = {old: new for new, old in enumerate(sorted_states)}
+            regime = regime.map(state_mapping)
+            
+            return regime
+            
+        except Exception as e:
+            print(f"  警告：HMM训练失败 ({e})，回退到阈值方法")
+            return self.detect_regime_threshold(df)
+    
+    def detect(self, df: pd.DataFrame) -> pd.Series:
+        """
+        检测市场状态
+        
+        Args:
+            df: 特征DataFrame
+            
+        Returns:
+            市场状态序列 (0=平稳, 1=波动, 2=极端)
+        """
+        if self.method == 'hmm':
+            return self.detect_regime_hmm(df)
+        else:
+            return self.detect_regime_threshold(df)
 
 
 # ============================================================
@@ -620,26 +938,39 @@ class CovarianceCalculator:
 class FeatureCalculator:
     """
     特征计算主流程
-    """
     
-    def __init__(self):
-        self.ofi_calc = OFICalculator()
+    支持参数:
+    - weight_method: 深度加权方案 ('exponential'|'linear'|'equal')
+    - regime_method: 市场状态检测方法 ('threshold'|'hmm')
+    """
+
+    def __init__(self, weight_method: str = 'exponential', regime_method: str = 'threshold'):
+        """
+        Args:
+            weight_method: 深度加权方案 'exponential' | 'linear' | 'equal'
+            regime_method: 市场状态检测方法 ('threshold' 或 'hmm')
+        """
+        self.ofi_calc = OFICalculator(weight_method=weight_method)
         self.rolling_calc = RollingFeatureCalculator()
         self.label_gen = LabelGenerator()
         self.cov_calc = CovarianceCalculator()
-        
+        self.regime_detector = MarketRegimeDetector(method=regime_method)
+        self.weight_method = weight_method
+
         self.stats = {
             'input_rows': 0,
             'output_rows': 0,
             'ofi_features': 4,
             'rolling_features': 0,
-            'label_distribution': {}
+            'label_distribution': {},
+            'regime_distribution': {}
         }
     
     def process(
         self, 
         df: pd.DataFrame,
         compute_covariance: bool = True,
+        compute_regime: bool = True,
         index_code: str = 'HK.800000'
     ) -> pd.DataFrame:
         """
@@ -648,6 +979,7 @@ class FeatureCalculator:
         Args:
             df: 清洗后的订单簿数据
             compute_covariance: 是否计算动态协方差
+            compute_regime: 是否计算市场状态
             index_code: 指数代码
             
         Returns:
@@ -655,26 +987,40 @@ class FeatureCalculator:
         """
         self.stats['input_rows'] = len(df)
         
-        print("\n[1/4] 计算OFI特征...")
+        print("\n[1/5] 计算OFI特征...")
         df = self.ofi_calc.compute_all_ofi_features(df)
         
-        print("[2/4] 计算滚动统计特征...")
+        print("[2/5] 计算滚动统计特征...")
         df = self.rolling_calc.compute_rolling_features(df)
         
-        print("[3/4] 生成预测标签...")
+        print("[3/5] 生成预测标签...")
         df = self.label_gen.generate_labels(df)
         
         # 统计标签分布
         self.stats['label_distribution'] = self.label_gen.get_label_distribution(df)
         
         if compute_covariance:
-            print("[4/4] 计算动态协方差...")
+            print("[4/5] 计算动态协方差...")
             index_df = self.cov_calc.load_index_kline(index_code)
             df = self.cov_calc.compute_rolling_covariance(df, index_df)
         else:
-            print("[4/4] 跳过动态协方差计算...")
+            print("[4/5] 跳过动态协方差计算...")
             df['cov_stock_index'] = np.nan
             df['corr_stock_index'] = np.nan
+        
+        if compute_regime:
+            print("[5/5] 检测市场状态...")
+            df['market_regime'] = self.regime_detector.detect(df)
+            # 统计状态分布
+            regime_counts = df['market_regime'].value_counts(normalize=True)
+            self.stats['regime_distribution'] = {
+                '平稳期(0)': regime_counts.get(0, 0),
+                '波动期(1)': regime_counts.get(1, 0),
+                '极端期(2)': regime_counts.get(2, 0)
+            }
+        else:
+            print("[5/5] 跳过市场状态检测...")
+            df['market_regime'] = 0
         
         # 移除前面无法计算的行（因为diff/rolling需要历史数据）
         df = df.dropna(subset=['ofi_l1'])
@@ -696,6 +1042,11 @@ class FeatureCalculator:
             print(f"    {label_name}:")
             for cat, pct in dist.items():
                 print(f"      {cat}: {pct*100:.1f}%")
+        print("-"*50)
+        print("  市场状态分布:")
+        if self.stats['regime_distribution']:
+            for regime_name, pct in self.stats['regime_distribution'].items():
+                print(f"    {regime_name}: {pct*100:.1f}%")
         print("="*50)
 
 
@@ -726,19 +1077,28 @@ def export_features(
             'ts', 'code',
             # 价格特征
             'mid_price', 'spread', 'spread_bps', 'return_pct',
-            # OFI特征
+            # OFI聚合特征
             'ofi_l1', 'ofi_l5', 'ofi_l10', 'smart_ofi',
-            # 滚动统计
+            # 分档OFI特征（ofi_level_1 到 ofi_level_10）
+            'ofi_level_1', 'ofi_level_2', 'ofi_level_3', 'ofi_level_4', 'ofi_level_5',
+            'ofi_level_6', 'ofi_level_7', 'ofi_level_8', 'ofi_level_9', 'ofi_level_10',
+            # OFI滚动统计
             'ofi_ma_10', 'ofi_std_10', 'ofi_zscore',
             'smart_ofi_ma_10', 'smart_ofi_std_10', 'smart_ofi_zscore',
             'return_ma_10', 'return_std_10',
             # 深度特征
             'bid_depth_5', 'ask_depth_5', 'depth_imbalance_5',
             'bid_depth_10', 'ask_depth_10', 'depth_imbalance_10',
+            # 深度不平衡滚动统计（新增）
+            'depth_imb_ma_10', 'depth_imb_std_10', 'depth_imb_zscore',
             # 成交特征
             'buy_volume', 'sell_volume', 'trade_count', 'trade_imbalance',
+            # 成交不平衡滚动统计（新增）
+            'trade_imb_ma_10', 'trade_imb_std_10', 'trade_imb_zscore',
             # 协方差
             'cov_stock_index', 'corr_stock_index',
+            # 市场状态（新增）
+            'market_regime',
             # 标签
             'threshold',
             'future_return_20', 'future_return_50', 'future_return_100',
@@ -773,20 +1133,28 @@ def main():
     parser.add_argument('--no-covariance', action='store_true', help='不计算动态协方差')
     parser.add_argument('--index', type=str, default='HK.800000', help='指数代码')
     parser.add_argument('--alpha', type=float, default=LABEL_ALPHA, help='标签阈值系数')
-    
+    parser.add_argument('--weight-method', type=str, default='exponential',
+                        choices=['exponential', 'linear', 'equal'],
+                        help='深度加权方案: exponential(指数衰减) | linear(线性衰减) | equal(等权重)')
+
     args = parser.parse_args()
-    
+
     print("="*50)
     print("  OFI论文 - 特征计算模块")
     print("="*50)
-    print(f"  深度衰减系数: α = {DECAY_ALPHA}")
+    print(f"  深度加权方案: {args.weight_method}")
+    if args.weight_method == 'exponential':
+        print(f"  深度衰减系数: α = {DECAY_ALPHA}")
     print(f"  滚动窗口: {ROLLING_WINDOW} 步")
     print(f"  标签阈值系数: α = {args.alpha}")
     print(f"  预测步长: k = {PREDICTION_HORIZONS}")
-    
+
     # 初始化计算器
-    calculator = FeatureCalculator()
+    calculator = FeatureCalculator(weight_method=args.weight_method)
     calculator.label_gen.alpha = args.alpha
+    
+    # 打印权重配置详情
+    print(calculator.ofi_calc.get_weights_info())
     
     # 确定输入文件
     if args.input:

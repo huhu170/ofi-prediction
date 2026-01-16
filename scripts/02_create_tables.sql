@@ -164,11 +164,23 @@ CREATE TABLE ofi_features (
     is_extreme_spread BOOLEAN DEFAULT FALSE,-- 极端价差标记 (spread_bps > 100)
     return_pct DECIMAL(12,8),               -- 收益率 (当前mid - 上一个mid) / 上一个mid
     
-    -- ========== OFI系列特征 ==========
+    -- ========== OFI聚合特征 ==========
     ofi_l1 DECIMAL(18,4),                   -- 单档OFI（第1档）
     ofi_l5 DECIMAL(18,4),                   -- 5档加权OFI（指数衰减）
     ofi_l10 DECIMAL(18,4),                  -- 10档加权OFI
     smart_ofi DECIMAL(18,4),                -- Smart-OFI（撤单率修正）
+    
+    -- ========== 分档OFI特征（各档独立OFI） ==========
+    ofi_level_1 DECIMAL(18,4),              -- 第1档OFI = Δbid1_vol - Δask1_vol
+    ofi_level_2 DECIMAL(18,4),              -- 第2档OFI
+    ofi_level_3 DECIMAL(18,4),              -- 第3档OFI
+    ofi_level_4 DECIMAL(18,4),              -- 第4档OFI
+    ofi_level_5 DECIMAL(18,4),              -- 第5档OFI
+    ofi_level_6 DECIMAL(18,4),              -- 第6档OFI
+    ofi_level_7 DECIMAL(18,4),              -- 第7档OFI
+    ofi_level_8 DECIMAL(18,4),              -- 第8档OFI
+    ofi_level_9 DECIMAL(18,4),              -- 第9档OFI
+    ofi_level_10 DECIMAL(18,4),             -- 第10档OFI
     
     -- ========== 订单簿形态特征 ==========
     bid_depth_5 BIGINT,                     -- 买盘5档总量
