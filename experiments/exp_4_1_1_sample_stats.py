@@ -1,121 +1,105 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 实验 4.1.1: 样本描述性统计汇总
-==============================
-对应论文: 表4-1 样本描述性统计汇总
+
+对应论文:
+- 表 4.1-1: 样本描述性统计汇总
 
 输出:
-- tables/table_4_1_sample_stats.csv
+- table_4_1_sample_stats.csv
 """
 
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+
+from exp_config import *
 import pandas as pd
 import numpy as np
-from datetime import datetime
-from exp_config import (
-    PROCESSED_DATA_DIR, RESULTS_DIR, 
-    save_table, print_section, load_feature_data
-)
 
-def calculate_sample_stats():
-    """计算样本描述性统计"""
-    print_section("实验 4.1.1: 样本描述性统计")
+def load_kline_data(code: str, ktype: str) -> pd.DataFrame:
+    """加载清洗后的K线数据"""
+    code_dir = DATA_PROCESSED / code.replace('.', '_')
+    file_path = code_dir / f"kline_cleaned_{ktype}.parquet"
     
-    # 加载数据
-    print("[1] 加载特征数据...")
-    try:
-        df = load_feature_data()
-    except FileNotFoundError as e:
-        print(f"  警告: {e}")
-        print("  使用模拟数据进行演示...")
-        df = generate_demo_data()
-    
-    print(f"  数据形状: {df.shape}")
-    print(f"  时间范围: {df['timestamp'].min()} ~ {df['timestamp'].max()}")
-    
-    # 计算统计量
-    print("\n[2] 计算描述性统计...")
-    
-    # 按股票代码分组统计
-    stats_list = []
-    
-    if 'code' in df.columns:
-        codes = df['code'].unique()
-    else:
-        codes = ['ALL']
-        df['code'] = 'ALL'
-    
-    for code in codes:
-        sub_df = df[df['code'] == code]
-        
-        # 计算交易日数
-        if 'timestamp' in sub_df.columns:
-            sub_df['date'] = pd.to_datetime(sub_df['timestamp']).dt.date
-            trading_days = sub_df['date'].nunique()
-        else:
-            trading_days = len(sub_df) // 2340  # 假设每天约2340个10秒窗口
-        
-        # 计算统计量
-        stats = {
-            '股票代码': code,
-            '样本期': f"{sub_df['timestamp'].min().strftime('%Y-%m-%d') if 'timestamp' in sub_df.columns else 'N/A'} ~ {sub_df['timestamp'].max().strftime('%Y-%m-%d') if 'timestamp' in sub_df.columns else 'N/A'}",
-            '有效交易日': trading_days,
-            '10秒窗口数': len(sub_df),
-            '日均窗口数': len(sub_df) // max(trading_days, 1),
-            '缺失率(%)': sub_df.isnull().sum().sum() / (len(sub_df) * len(sub_df.columns)) * 100,
-        }
-        
-        # 如果有OFI列，计算更新频次
-        if 'ofi_l1' in sub_df.columns:
-            stats['OFI非零比例(%)'] = (sub_df['ofi_l1'] != 0).mean() * 100
-        
-        stats_list.append(stats)
-    
-    # 汇总统计
-    result_df = pd.DataFrame(stats_list)
-    
-    # 添加汇总行
-    total_stats = {
-        '股票代码': '汇总',
-        '样本期': f"{df['timestamp'].min().strftime('%Y-%m-%d')} ~ {df['timestamp'].max().strftime('%Y-%m-%d')}" if 'timestamp' in df.columns else 'N/A',
-        '有效交易日': result_df['有效交易日'].sum() if len(result_df) > 1 else result_df['有效交易日'].iloc[0],
-        '10秒窗口数': len(df),
-        '日均窗口数': result_df['日均窗口数'].mean(),
-        '缺失率(%)': df.isnull().sum().sum() / (len(df) * len(df.columns)) * 100,
+    if file_path.exists():
+        return pd.read_parquet(file_path)
+    return pd.DataFrame()
+
+def compute_sample_stats(code: str, name: str) -> dict:
+    """计算单只股票的样本统计"""
+    stats = {
+        '股票代码': code,
+        '股票名称': name,
     }
-    if 'OFI非零比例(%)' in result_df.columns:
-        total_stats['OFI非零比例(%)'] = result_df['OFI非零比例(%)'].mean()
     
-    result_df = pd.concat([result_df, pd.DataFrame([total_stats])], ignore_index=True)
+    for ktype in KLINE_TYPES:
+        df = load_kline_data(code, ktype)
+        
+        if df.empty:
+            stats[f'{ktype}_样本量'] = 0
+            stats[f'{ktype}_缺失率'] = 'N/A'
+            stats[f'{ktype}_起始日期'] = 'N/A'
+            stats[f'{ktype}_结束日期'] = 'N/A'
+        else:
+            stats[f'{ktype}_样本量'] = len(df)
+            
+            # 计算缺失率（基于时间连续性）
+            if 'ts' in df.columns:
+                df['ts'] = pd.to_datetime(df['ts'])
+                # 对于分钟K线，检查时间间隔
+                if ktype == '1M':
+                    expected_interval = pd.Timedelta(minutes=1)
+                elif ktype == '5M':
+                    expected_interval = pd.Timedelta(minutes=5)
+                elif ktype == '60M':
+                    expected_interval = pd.Timedelta(hours=1)
+                else:
+                    expected_interval = pd.Timedelta(days=1)
+                
+                time_diff = df['ts'].diff()
+                # 简化缺失率计算
+                missing_rate = (df.isna().sum().sum()) / (len(df) * len(df.columns)) * 100
+                stats[f'{ktype}_缺失率'] = f'{missing_rate:.2f}%'
+                
+                stats[f'{ktype}_起始日期'] = df['ts'].min().strftime('%Y-%m-%d')
+                stats[f'{ktype}_结束日期'] = df['ts'].max().strftime('%Y-%m-%d')
+            else:
+                stats[f'{ktype}_缺失率'] = 'N/A'
+                stats[f'{ktype}_起始日期'] = 'N/A'
+                stats[f'{ktype}_结束日期'] = 'N/A'
     
-    # 打印结果
-    print("\n[3] 统计结果:")
-    print(result_df.to_string(index=False))
+    return stats
+
+def run_experiment():
+    """运行实验"""
+    log_experiment('4.1.1', '开始样本描述性统计')
+    
+    results = []
+    
+    for code, name, sector in STOCK_LIST:
+        log_experiment('4.1.1', f'处理 {code} {name}')
+        stats = compute_sample_stats(code, name)
+        stats['行业'] = sector
+        results.append(stats)
+    
+    # 汇总为DataFrame
+    df_results = pd.DataFrame(results)
     
     # 保存结果
-    print("\n[4] 保存结果...")
-    save_table(result_df, 'table_4_1_sample_stats')
+    output_path = get_output_path('table_4_1_sample_stats', 'csv')
+    df_results.to_csv(output_path, index=False, encoding='utf-8-sig')
     
-    return result_df
+    log_experiment('4.1.1', f'结果已保存: {output_path}')
+    
+    # 打印汇总
+    print("\n" + "="*60)
+    print("  表 4.1-1: 样本描述性统计汇总")
+    print("="*60)
+    print(df_results.to_string(index=False))
+    
+    return df_results
 
-def generate_demo_data():
-    """生成演示数据"""
-    np.random.seed(42)
-    n_samples = 10000
-    
-    timestamps = pd.date_range('2024-01-01', periods=n_samples, freq='10s')
-    
-    df = pd.DataFrame({
-        'timestamp': timestamps,
-        'code': 'DEMO',
-        'mid_price': 100 + np.cumsum(np.random.randn(n_samples) * 0.01),
-        'ofi_l1': np.random.randn(n_samples) * 100,
-        'ofi_l5': np.random.randn(n_samples) * 150,
-        'smart_ofi': np.random.randn(n_samples) * 80,
-    })
-    
-    return df
 
-if __name__ == '__main__':
-    result = calculate_sample_stats()
-    print("\n✓ 实验 4.1.1 完成")
+if __name__ == "__main__":
+    set_seed()
+    run_experiment()

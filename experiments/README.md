@@ -1,130 +1,150 @@
-# 论文第四章实验脚本
+# 论文实验脚本
 
-> 版本: v1.0  
-> 日期: 2026-01-14
-
----
-
-## 概述
-
-本目录包含论文第四章《订单流不平衡股价预测实证分析》的所有实验脚本，用于生成论文中的表格和图表。
+> 与论文第四章"分钟级价格预测实证分析"对齐
 
 ## 目录结构
 
 ```
 experiments/
-├── exp_config.py              # 共享配置文件
-├── run_all_experiments.py     # 一键运行脚本
+├── exp_config.py              # 实验配置文件
+├── run_all_experiments.py     # 主运行脚本
 ├── README.md                  # 本文档
 │
-├── exp_4_1_*.py               # 4.1节: OFI与价格变动的统计分析
-├── exp_4_2_*.py               # 4.2节: 模型性能评估与实证对比
-├── exp_4_3_*.py               # 4.3节: 策略回测与经济价值评估
-└── exp_4_4_*.py               # 4.4节: 模型可解释性与稳健性检验
+├── # 4.1节 数据与特征的统计分析
+├── exp_4_1_1_sample_stats.py          # 表4.1-1 样本描述性统计
+├── exp_4_1_2_feature_distribution.py  # 图4.1-1 特征分布 + 表4.1-2 统计量
+├── exp_4_1_3_label_balance.py         # 表4.1-3 标签分布
+├── exp_4_1_4_correlation.py           # 表4.1-4 相关性检验
+├── exp_4_1_5_ols_regression.py        # 表4.1-5 OLS回归
+├── exp_4_1_6_scale_comparison.py      # 表4.1-6 多尺度解释力对比
+│
+├── # 4.2节 模型性能评估
+├── exp_4_2_1_baseline_models.py       # 表4.2-1 基准模型
+├── exp_4_2_2_deep_models.py           # 表4.2-2 深度学习模型
+├── exp_4_2_3a_pv_crossattn_ablation.py # 表4.2-3a PV-CrossAttention消融
+├── exp_4_2_3b_lsf_ablation.py         # 表4.2-3b LSF消融
+├── exp_4_2_4_feature_ablation.py      # 表4.2-4 特征消融
+├── exp_4_2_5_threshold_sensitivity.py # 表4.2-5 阈值敏感性
+│
+├── # 4.3节 策略回测
+├── exp_4_3_1_backtest_config.py       # 表4.3-1 回测参数
+├── exp_4_3_2_backtest.py              # 表4.3-2 经济价值 + 图4.3-3 净值曲线
+├── exp_4_3_3_scale_comparison.py      # 表4.3-4 多尺度回测对比
+├── exp_4_3_4_cost_sensitivity.py      # 表4.3-5 交易成本敏感性
+│
+├── # 4.4节 可解释性与稳健性
+├── exp_4_4_1_shap_analysis.py         # 图4.4-1/2 SHAP归因
+├── exp_4_4_2_regime_split.py          # 表4.4-3 市场状态分组
+├── exp_4_4_2a_event_study.py          # 表4.4-3a/b 金融事件案例
+├── exp_4_4_3_asset_split.py           # 表4.4-4 资产类型分组
+├── exp_4_4_5_granger_causality.py     # 表4.4-5 Granger因果
+├── exp_4_4_6_causal_feature_comparison.py # 表4.4-6 因果特征对比
+├── exp_4_4_7_counterfactual.py        # 图4.4-7 反事实分析
+├── exp_4_4_8_decay_analysis.py        # 图4.4-8 预测衰减
+├── exp_4_4_9_market_state.py          # 表4.4-10 市场状态对比
+├── exp_4_4_10_rolling_training.py     # 图4.4-11 滚动训练
+└── exp_4_4_11_shap_vs_causal.py       # 表4.4-13 SHAP vs Granger
 ```
 
-## 快速开始
+## 使用方法
 
 ### 运行所有实验
-
 ```bash
-cd experiments
 python run_all_experiments.py
 ```
 
 ### 运行特定章节
-
 ```bash
-# 只运行4.1节实验
-python run_all_experiments.py --section 4.1
-
-# 预览将要运行的脚本
-python run_all_experiments.py --dry-run
+python run_all_experiments.py --section 4.1    # 4.1节数据统计
+python run_all_experiments.py --section 4.2    # 4.2节模型评估
+python run_all_experiments.py --section 4.3    # 4.3节策略回测
+python run_all_experiments.py --section 4.4    # 4.4节可解释性
 ```
 
 ### 运行单个实验
-
 ```bash
-python exp_4_1_1_sample_stats.py
+python run_all_experiments.py --exp 4.1.1      # 样本统计
+python run_all_experiments.py --exp 4.2.2      # 深度模型评估
+python run_all_experiments.py --exp 4.4.1      # SHAP分析
 ```
 
----
+### 列出所有实验
+```bash
+python run_all_experiments.py --list
+```
 
-## 实验列表
+## 输出说明
 
-### 4.1节: OFI与价格变动的统计分析
-
-| 脚本 | 论文对应 | 输出 |
-|------|----------|------|
-| `exp_4_1_1_sample_stats.py` | 表4-1 | `table_4_1_sample_stats.csv` |
-| `exp_4_1_2_ofi_distribution.py` | 图4-1, 表4-2 | `fig_4_1_*.png`, `table_4_2_*.csv` |
-| `exp_4_1_3_label_balance.py` | 表4-3 | `table_4_3_label_distribution.csv` |
-| `exp_4_1_4_correlation.py` | 表4-4 | `table_4_4_correlation.csv` |
-| `exp_4_1_5_ols_regression.py` | 表4-5 | `table_4_5_ols_regression.csv` |
-| `exp_4_1_6_intraday_impact.py` | 图4-2 | `fig_4_2_intraday_impact.png` |
-| `exp_4_1_7_depth_comparison.py` | 表4-6, 图4-3 | `table_4_6_*.csv`, `fig_4_3_*.png` |
-
-### 4.2节: 模型性能评估
-
-| 脚本 | 论文对应 | 输出 |
-|------|----------|------|
-| `exp_4_2_1_baseline_models.py` | 表4-7 | `table_4_7_baseline_models.csv` |
-| `exp_4_2_2_deep_models.py` | 表4-8 | `table_4_8_deep_models.csv` |
-| `exp_4_2_3_model_comparison_plot.py` | 图4-4 | `fig_4_4_model_comparison.png` |
-| `exp_4_2_4_ablation.py` | 表4-9 | `table_4_9_ablation.csv` |
-| `exp_4_2_5_threshold_sensitivity.py` | 表4-10 | `table_4_10_threshold_sensitivity.csv` |
-
-### 4.3节: 策略回测
-
-| 脚本 | 论文对应 | 输出 |
-|------|----------|------|
-| `exp_4_3_1_backtest_config.py` | 表4-11 | `table_4_11_backtest_config.csv` |
-| `exp_4_3_2_backtest.py` | 表4-12, 图4-5 | `table_4_12_*.csv`, `fig_4_5_*.png` |
-| `exp_4_3_3_ofi_comparison.py` | 表4-13 | `table_4_13_ofi_economic_comparison.csv` |
-
-### 4.4节: 可解释性与稳健性
-
-| 脚本 | 论文对应 | 输出 |
-|------|----------|------|
-| `exp_4_4_1_shap_analysis.py` | 图4-6, 图4-7 | `fig_4_6_*.png`, `fig_4_7_*.png` |
-| `exp_4_4_2_regime_split.py` | 表4-14 | `table_4_14_regime_comparison.csv` |
-| `exp_4_4_3_asset_split.py` | 表4-15 | `table_4_15_asset_comparison.csv` |
-| `exp_4_4_5_control_group.py` | 表4-16 | `table_4_16_control_group.csv` |
-
----
-
-## 输出目录
-
-运行实验后，结果保存在：
+实验结果保存在 `experiment_results/` 目录：
 
 ```
 experiment_results/
-├── tables/          # CSV格式表格
-└── figures/         # PNG格式图表
+├── figures/               # 图表
+│   ├── fig_4_1_*.png
+│   ├── fig_4_2_*.png
+│   ├── fig_4_3_*.png
+│   └── fig_4_4_*.png
+└── tables/                # 表格
+    ├── table_4_1_*.csv
+    ├── table_4_2_*.csv
+    ├── table_4_3_*.csv
+    └── table_4_4_*.csv
 ```
 
----
+## 实验与论文的对应关系
 
-## 依赖关系
+### 4.1节 数据与特征的统计分析
 
-实验脚本依赖以下数据流程脚本（位于 `scripts/` 目录）：
+| 实验ID | 论文表/图 | 说明 |
+|--------|-----------|------|
+| 4.1.1 | 表4.1-1 | 样本描述性统计 |
+| 4.1.2 | 图4.1-1 + 表4.1-2 | 特征分布 |
+| 4.1.3 | 表4.1-3 | 标签分布检验 |
+| 4.1.4 | 表4.1-4 | 相关性检验 |
+| 4.1.5 | 表4.1-5 | OLS回归 |
+| 4.1.6 | 表4.1-6 + 图4.1-2 | 多尺度解释力 |
 
-```
-10_data_cleaner.py    → 数据清洗
-11_feature_calculator.py → 特征计算
-12_dataset_builder.py → 数据集构建
-13_model_trainer.py   → 模型训练
-14_backtest.py        → 策略回测
-16_shap_analysis.py   → SHAP分析
-```
+### 4.2节 模型性能评估
 
-确保先运行数据流程脚本生成必要的数据和模型。
+| 实验ID | 论文表/图 | 说明 |
+|--------|-----------|------|
+| 4.2.1 | 表4.2-1 | 基准模型（ARIMA/LR/RF/XGB） |
+| 4.2.2 | 表4.2-2 | 深度模型（LSTM/GRU/Transformer） |
+| 4.2.3a | 表4.2-3a + 图4.2-3a | PV-CrossAttention消融 |
+| 4.2.3b | 表4.2-3b/c + 图4.2-3b | LSF消融 |
+| 4.2.4 | 表4.2-4 | 特征消融 |
+| 4.2.5 | 表4.2-5 | 阈值敏感性 |
 
----
+### 4.3节 策略回测
 
-## 注意事项
+| 实验ID | 论文表/图 | 说明 |
+|--------|-----------|------|
+| 4.3.1 | 表4.3-1 | 回测参数配置 |
+| 4.3.2 | 表4.3-2 + 图4.3-3 | 经济价值指标 + 净值曲线 |
+| 4.3.3 | 表4.3-4 | 多尺度回测对比 |
+| 4.3.4 | 表4.3-5/6/7 + 图4.3-6 | 交易成本敏感性 |
 
-1. **数据依赖**: 部分脚本需要真实数据，若数据不存在会使用模拟数据演示
-2. **计算资源**: 深度模型评估需要GPU支持（可选）
-3. **运行时间**: 完整运行所有实验约需30-60分钟
-4. **结果复现**: 已设置随机种子确保结果可复现
+### 4.4节 可解释性与稳健性
+
+| 实验ID | 论文表/图 | 说明 | 研究线路 |
+|--------|-----------|------|----------|
+| 4.4.1 | 图4.4-1/2 | SHAP归因 | 线路一 |
+| 4.4.5 | 表4.4-5 | Granger因果 | 线路二 |
+| 4.4.6 | 表4.4-6 | 因果特征验证 | 线路二 |
+| 4.4.7 | 图4.4-7 | 反事实分析 | 线路二 |
+| 4.4.2 | 表4.4-3 | 市场状态分组 | 线路三 |
+| 4.4.2a | 表4.4-3a/b + 图4.4-3c | 金融事件案例 | 线路三 |
+| 4.4.3 | 表4.4-4 | 资产类型分组 | 线路三 |
+| 4.4.8 | 图4.4-8 + 表4.4-9 | 预测衰减 | 线路三 |
+| 4.4.9 | 表4.4-10 | 市场状态预测 | 线路三 |
+| 4.4.10 | 图4.4-11 + 表4.4-12 | 滚动训练 | 线路三 |
+| 4.4.11 | 表4.4-13 | SHAP vs Granger | 综合 |
+
+## 依赖
+
+见项目根目录 `requirements.txt`
+
+## 可复现性
+
+- 固定随机种子: `seed=42`
+- 所有实验使用 `exp_config.set_seed()` 确保可复现
