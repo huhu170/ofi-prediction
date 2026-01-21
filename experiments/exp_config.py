@@ -23,15 +23,15 @@ DATA_DIR = PROJECT_ROOT / "data"
 DATA_RAW = DATA_DIR / "raw"
 DATA_PROCESSED = DATA_DIR / "processed"
 
-# 输出路径
-EXPERIMENT_RESULTS = PROJECT_ROOT / "experiment_results"
-FIGURES_DIR = EXPERIMENT_RESULTS / "figures"
-TABLES_DIR = EXPERIMENT_RESULTS / "tables"
+# 输出路径（统一到outputs/ch4目录）
+OUTPUTS_DIR = PROJECT_ROOT / "outputs"
+CH4_DIR = OUTPUTS_DIR / "ch4"
+FIGURES_DIR = CH4_DIR / "figures"
+TABLES_DIR = CH4_DIR / "tables"
 MODELS_DIR = PROJECT_ROOT / "models"
-BACKTEST_RESULTS = PROJECT_ROOT / "backtest_results"
 
 # 确保目录存在
-for d in [FIGURES_DIR, TABLES_DIR, MODELS_DIR, BACKTEST_RESULTS]:
+for d in [FIGURES_DIR, TABLES_DIR, MODELS_DIR]:
     d.mkdir(parents=True, exist_ok=True)
 
 # ============================================================
