@@ -95,21 +95,45 @@ TRAIN_RATIO = 0.7
 VAL_RATIO = 0.15
 TEST_RATIO = 0.15
 
-# K线特征列（与11b_kline_feature_calculator.py对齐）
+# K线特征列（与论文表3.3-1对齐，共22维）
+# 参考论文表3.4-3：输入维度 (T, 22)
 KLINE_FEATURE_COLS = [
-    # 成交不平衡(TI)
-    'ti', 'ti_5', 'ti_20', 'ti_zscore',
-    # 收益率
-    'return_1', 'return_5', 'return_20', 'return_zscore',
-    # 成交量
-    'relative_volume', 'volume_change', 'pv_corr',
-    # 波动率
-    'atr', 'atr_pct', 'range_pct', 'volatility_20',
-    # 技术指标
-    'rsi', 'macd_dif', 'macd_dea', 'macd', 'bb_position',
-    # 市场状态
-    'market_regime'
+    # === 价格特征 (6维) ===
+    # 多周期收益率 (4维) - 公式3.2-2
+    'return_1', 'return_5', 'return_20', 'return_60',
+    # K线形态 (2维) - 论文表3.3-1
+    'kline_position',  # (C-O)/(H-L)
+    'range_pct',       # (H-L)/O - 公式3.2-6
+    
+    # === 成交量特征 (2维) ===
+    'relative_volume',  # V/MA_20(V) - 公式3.2-3
+    'volume_change',    # V_t/V_{t-1}
+    
+    # === 量价特征 (4维) ===
+    'ti',       # 成交不平衡 - 公式3.2-1
+    'ti_5',     # 5分钟累积TI
+    'ti_60',    # 60分钟累积TI
+    'pv_corr',  # 量价相关性 - 公式3.2-4
+    
+    # === 波动特征 (2维) ===
+    'atr_pct',       # ATR/价格 - 公式3.2-5
+    'volatility_20', # STD_20(r)
+    
+    # === 技术指标 (5维) ===
+    'rsi',        # RSI(14)
+    'macd_dif',   # MACD DIF
+    'macd_dea',   # MACD DEA
+    'macd',       # MACD柱
+    'bb_position', # 布林带位置
+    
+    # === 滚动统计 (2维) ===
+    'ti_zscore',     # TI的Z-score
+    'return_zscore', # 收益率Z-score
+    
+    # === 市场状态 (1维) ===
+    'market_regime'  # 公式3.3-1
 ]
+# 总计: 6 + 2 + 4 + 2 + 5 + 2 + 1 = 22维
 
 # 数据路径
 DATA_PROCESSED = Path(os.getenv("DATA_PROCESSED", "data/processed"))
@@ -240,15 +264,31 @@ class KlineSequenceGenerator:
 # 数据划分器
 # ============================================================
 
+# 默认Gap值（论文第三章第一节第5部分要求30分钟，避免标签泄漏）
+DEFAULT_GAP = 30  # 对于1分钟K线，30个样本 = 30分钟
+
+
 class TimeSeriesSplitter:
-    """时序数据划分器（防止未来信息泄露）"""
+    """
+    时序数据划分器（防止未来信息泄露）
+    
+    论文要求（第三章第一节第5部分）:
+    - 训练窗口: 3个月
+    - 验证窗口: 2周  
+    - 测试窗口: 2周
+    - Gap: 30分钟（避免标签泄漏）
+    - 滚动步长: 1周
+    
+    注意: 当前实现为静态划分，作为初始化基准。
+    滚动训练（Walk-forward Validation）在模型训练脚本中实现。
+    """
     
     def __init__(
         self,
         train_ratio: float = TRAIN_RATIO,
         val_ratio: float = VAL_RATIO,
         test_ratio: float = TEST_RATIO,
-        gap: int = 0  # 训练/验证/测试之间的间隔
+        gap: int = DEFAULT_GAP  # 论文要求Gap=30分钟
     ):
         self.train_ratio = train_ratio
         self.val_ratio = val_ratio
@@ -261,7 +301,10 @@ class TimeSeriesSplitter:
         y: np.ndarray
     ) -> Dict[str, Tuple[np.ndarray, np.ndarray]]:
         """
-        时序划分
+        时序划分（静态划分作为初始化基准）
+        
+        论文说明: 本研究将静态划分作为初始化基准（即首轮滚动的起点），
+        正式实验采用滚动训练策略以适应市场非平稳性。
         
         Returns:
             {'train': (X, y), 'val': (X, y), 'test': (X, y)}
@@ -281,13 +324,43 @@ class TimeSeriesSplitter:
 # PyTorch Dataset
 # ============================================================
 
+# 标签映射说明（论文标签 → PyTorch CrossEntropyLoss兼容）
+# 论文定义: -1(下跌), 0(平稳), +1(上涨)
+# PyTorch需要: 0, 1, 2 (连续整数从0开始)
+# 映射方式: y_pytorch = y_paper + 1
+LABEL_MAPPING = {
+    -1: 0,  # 下跌
+     0: 1,  # 平稳
+    +1: 2,  # 上涨
+}
+
+def map_labels_for_pytorch(y: np.ndarray) -> np.ndarray:
+    """
+    将论文标签 {-1, 0, +1} 映射为 PyTorch 标签 {0, 1, 2}
+    
+    Args:
+        y: 论文格式标签数组，值为 {-1, 0, +1}
+        
+    Returns:
+        PyTorch格式标签数组，值为 {0, 1, 2}
+    """
+    return (y + 1).astype(int)
+
+
 if HAS_TORCH:
     class KlineDataset(Dataset):
-        """K线特征数据集"""
+        """
+        K线特征数据集
+        
+        标签编码:
+        - 输入标签: 论文格式 {-1(下跌), 0(平稳), +1(上涨)}
+        - 输出标签: PyTorch格式 {0(下跌), 1(平稳), 2(上涨)}
+        """
         
         def __init__(self, X: np.ndarray, y: np.ndarray):
             self.X = torch.FloatTensor(X)
-            self.y = torch.LongTensor(y.astype(int))
+            # 标签映射: {-1, 0, +1} → {0, 1, 2}
+            self.y = torch.LongTensor(map_labels_for_pytorch(y))
         
         def __len__(self):
             return len(self.X)
@@ -304,13 +377,14 @@ if HAS_TORCH:
             '5M': (seq_len_5m, F),
             '60M': (seq_len_60m, F),
             'DAY': (seq_len_day, F),
-            'label': scalar
+            'label': scalar (PyTorch格式: 0/1/2)
         }
         """
         
         def __init__(self, scale_data: Dict[str, np.ndarray], labels: np.ndarray):
             self.scale_data = {k: torch.FloatTensor(v) for k, v in scale_data.items()}
-            self.labels = torch.LongTensor(labels.astype(int))
+            # 标签映射: {-1, 0, +1} → {0, 1, 2}
+            self.labels = torch.LongTensor(map_labels_for_pytorch(labels))
         
         def __len__(self):
             return len(self.labels)
@@ -474,24 +548,27 @@ class KlineDatasetBuilder:
         # 使用1分钟数据的标签作为主标签
         main_labels = scale_features.get('1M', list(scale_features.values())[0])['y']
         
-        # 划分
-        splitter = TimeSeriesSplitter()
+        # 标签映射: {-1, 0, +1} → {0, 1, 2}（PyTorch兼容）
+        main_labels = map_labels_for_pytorch(main_labels)
+        
+        # 划分（带Gap）
         n = min_len
         train_end = int(n * TRAIN_RATIO)
         val_end = int(n * (TRAIN_RATIO + VAL_RATIO))
+        gap = DEFAULT_GAP
         
         result = {'train': {}, 'val': {}, 'test': {}}
         
         for ktype, data in scale_features.items():
             result['train'][ktype] = data['X'][:train_end]
-            result['val'][ktype] = data['X'][train_end:val_end]
-            result['test'][ktype] = data['X'][val_end:]
+            result['val'][ktype] = data['X'][train_end + gap : val_end]
+            result['test'][ktype] = data['X'][val_end + gap:]
         
         result['train']['labels'] = main_labels[:train_end]
-        result['val']['labels'] = main_labels[train_end:val_end]
-        result['test']['labels'] = main_labels[val_end:]
+        result['val']['labels'] = main_labels[train_end + gap : val_end]
+        result['test']['labels'] = main_labels[val_end + gap:]
         
-        print(f"  多尺度数据集构建完成: {min_len} 样本")
+        print(f"  多尺度数据集构建完成: {min_len} 样本 (Gap={gap})")
         
         return result
     
@@ -532,6 +609,22 @@ def export_dataset(
 
 
 # ============================================================
+# 辅助函数
+# ============================================================
+
+def get_available_codes_from_processed() -> List[str]:
+    """从processed目录获取所有可用的股票代码"""
+    codes = []
+    if DATA_PROCESSED.exists():
+        for code_dir in DATA_PROCESSED.iterdir():
+            if code_dir.is_dir() and code_dir.name.startswith('HK_'):
+                # 将 HK_00700 转回 HK.00700
+                code = code_dir.name.replace('_', '.')
+                codes.append(code)
+    return sorted(codes)
+
+
+# ============================================================
 # 主入口
 # ============================================================
 
@@ -543,31 +636,53 @@ def main():
                         help='预测步长（分钟）')
     parser.add_argument('--multi-scale', action='store_true', 
                         help='构建多尺度数据集')
+    parser.add_argument('--all', action='store_true',
+                        help='构建所有股票（从processed目录获取列表）')
     parser.add_argument('--output', type=str, default='data/datasets',
                         help='输出目录')
     
     args = parser.parse_args()
     
-    print("="*50)
+    print("="*60)
     print("  K线数据集构建")
-    print("="*50)
-    print(f"  股票代码: {args.code}")
-    print(f"  预测步长: {args.horizon} 分钟")
+    print("="*60)
     
-    builder = KlineDatasetBuilder(horizon_minutes=args.horizon)
+    # 确定要处理的股票
+    if args.all:
+        codes = get_available_codes_from_processed()
+        if not codes:
+            print("[ERROR] processed目录中没有找到股票数据，请先运行特征计算脚本")
+            return
+        print(f"  [批量模式] 共 {len(codes)} 只股票")
+    else:
+        codes = [args.code]
+        print(f"  股票代码: {args.code}")
+    
+    print(f"  预测步长: {args.horizon} 分钟")
+    print(f"  Gap: {DEFAULT_GAP} 分钟")
+    
     output_dir = Path(args.output)
     
-    if args.multi_scale:
-        print("\n构建多尺度数据集...")
-        result = builder.build_multi_scale(args.code)
-        if result:
-            export_dataset(result, output_dir, args.code, 'multi_scale')
-    else:
-        print(f"\n构建单尺度数据集 ({args.ktype})...")
-        result = builder.build_single_scale(args.code, args.ktype)
-        if result:
-            export_dataset(result, output_dir, args.code, args.ktype)
-            builder.print_stats()
+    # 处理每只股票
+    total = len(codes)
+    for i, code in enumerate(codes, 1):
+        print(f"\n{'='*60}")
+        print(f"  [{i}/{total}] 构建: {code}")
+        print('='*60)
+        
+        builder = KlineDatasetBuilder(horizon_minutes=args.horizon)
+        
+        if args.multi_scale:
+            print("  模式: 多尺度数据集")
+            result = builder.build_multi_scale(code)
+            if result:
+                export_dataset(result, output_dir, code, 'multi_scale')
+        else:
+            print(f"  模式: 单尺度数据集 ({args.ktype})")
+            result = builder.build_single_scale(code, args.ktype)
+            if result:
+                export_dataset(result, output_dir, code, args.ktype)
+                builder.print_stats()
     
     print("\n[DONE] 数据集构建完成！")
 

@@ -36,6 +36,7 @@ notes_mineru/_progress.jsonl
 data/raw/*
 data/processed/*
 data/models/*
+data/datasets/*
 # data/postgres/ moved to D:/ofi_data/postgres (outside project)
 !data/**/.gitkeep
 *.parquet

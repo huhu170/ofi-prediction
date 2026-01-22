@@ -180,29 +180,59 @@ class TradeImbalanceCalculator:
         
         return pd.Series(ti, index=df.index, name='ti')
     
-    def compute_multi_period_ti(self, df: pd.DataFrame) -> pd.DataFrame:
+    def compute_kline_position(self, df: pd.DataFrame) -> pd.Series:
         """
-        计算多周期成交不平衡
+        计算K线形态特征（不乘成交量）- 论文表3.3-1
         
-        论文表格说明:
-        - 1分钟TI: 瞬时供需失衡
-        - 5分钟TI: 短期累积失衡 (Σ TI_{t-i}, i=0..4)
-        - 60分钟TI: 中期趋势信号 (Σ TI_{t-i}, i=0..59)
+        公式: kline_position = (C - O) / (H - L)
+        经济含义: 收盘价在日内波动区间的相对位置
+        - 接近+1: 收盘价接近最高价（强势）
+        - 接近-1: 收盘价接近最低价（弱势）
+        - 接近0: 收盘价接近开盘价（犹豫）
         
         Args:
             df: K线数据
             
         Returns:
-            添加了TI特征的DataFrame
+            K线形态特征序列
+        """
+        range_hl = df['high'] - df['low']
+        
+        # 边界条件处理：当 H = L 时（无波动），设为0
+        kline_pos = np.where(
+            range_hl > 0,
+            (df['close'] - df['open']) / range_hl,
+            0.0
+        )
+        
+        return pd.Series(kline_pos, index=df.index, name='kline_position')
+    
+    def compute_multi_period_ti(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        计算多周期成交不平衡与K线形态特征
+        
+        论文表3.3-1特征:
+        - kline_position: K线形态 (C-O)/(H-L)，不乘成交量
+        - TI: 成交不平衡 (C-O)/(H-L) × V
+        - ti_5: 5分钟累积TI (Σ TI_{t-i}, i=0..4)
+        - ti_60: 60分钟累积TI (Σ TI_{t-i}, i=0..59)
+        
+        Args:
+            df: K线数据
+            
+        Returns:
+            添加了TI和K线形态特征的DataFrame
         """
         df = df.copy()
         
-        # 基础TI
+        # K线形态特征（不乘成交量）- 论文表3.3-1
+        df['kline_position'] = self.compute_kline_position(df)
+        
+        # 基础TI（乘成交量）
         df['ti'] = self.compute_ti(df)
         
-        # 累积TI（滚动求和）
+        # 累积TI（滚动求和）- 按论文表3.3-1：5分钟和60分钟
         df['ti_5'] = df['ti'].rolling(5, min_periods=1).sum()
-        df['ti_20'] = df['ti'].rolling(20, min_periods=1).sum()
         df['ti_60'] = df['ti'].rolling(60, min_periods=1).sum()
         
         # TI的Z-score标准化
@@ -605,22 +635,25 @@ def export_features(
     """导出特征数据"""
     
     if select_columns:
-        # 选择要导出的特征列
+        # 选择要导出的特征列（与论文表3.3-1对齐，共22维模型输入特征）
         feature_cols = [
             # 索引
             'ts', 'code',
-            # 价格基础
+            # 价格基础（不作为模型输入，仅供参考）
             'open', 'high', 'low', 'close', 'volume',
-            # 成交不平衡(TI) - 公式3.2-1
-            'ti', 'ti_5', 'ti_20', 'ti_60', 'ti_zscore',
-            # 收益率 - 公式3.2-2
+            # K线形态 - 论文表3.3-1（2维）
+            'kline_position',  # (C-O)/(H-L)，不乘成交量
+            'range_pct',       # (H-L)/O，日内波幅比
+            # 成交不平衡(TI) - 公式3.2-1（4维：ti, ti_5, ti_60, ti_zscore）
+            'ti', 'ti_5', 'ti_60', 'ti_zscore',
+            # 收益率 - 公式3.2-2（4维：return_1, return_5, return_20, return_60）
             'return_1', 'return_5', 'return_20', 'return_60',
             'return_ma_20', 'return_std_20', 'return_zscore',
-            # 成交量 - 公式3.2-3, 3.2-4
+            # 成交量 - 公式3.2-3, 3.2-4（2维：relative_volume, volume_change）
             'relative_volume', 'volume_change', 'pv_corr',
-            # 波动率 - 公式3.2-5, 3.2-6
-            'tr', 'atr', 'atr_pct', 'range_pct', 'volatility_20',
-            # 技术指标
+            # 波动率 - 公式3.2-5, 3.2-6（2维：atr_pct, volatility_20）
+            'tr', 'atr', 'atr_pct', 'volatility_20',
+            # 技术指标（5维）
             'rsi', 'macd_dif', 'macd_dea', 'macd', 'bb_position',
             # 市场状态 - 公式3.3-1
             'market_regime',
@@ -656,55 +689,71 @@ def main():
                         help='标签阈值（涨跌幅）')
     parser.add_argument('--multi-scale', action='store_true', 
                         help='计算多尺度特征（1M/5M/60M/DAY）')
+    parser.add_argument('--all', action='store_true',
+                        help='计算所有股票（从数据库获取列表）')
     
     args = parser.parse_args()
     
-    print("="*50)
+    print("="*60)
     print("  论文 - K线特征计算模块")
-    print("="*50)
-    print(f"  股票代码: {args.code}")
-    print(f"  K线类型: {args.ktype}")
-    print(f"  标签阈值: α = {args.alpha}")
-    print(f"  预测步长: k = {PREDICTION_HORIZONS}")
+    print("="*60)
     
     # 初始化
     loader = KlineDataLoader()
     calculator = KlineFeatureCalculator(label_alpha=args.alpha)
     
     try:
+        # 确定要处理的股票
+        if args.all:
+            codes = loader.get_available_codes()
+            print(f"  [批量模式] 共 {len(codes)} 只股票")
+        else:
+            codes = [args.code]
+            print(f"  股票代码: {args.code}")
+        
+        print(f"  标签阈值: α = {args.alpha}")
+        print(f"  预测步长: k = {PREDICTION_HORIZONS}")
+        
         # 确定K线类型列表
         if args.multi_scale:
             ktypes = ['1M', '5M', '60M', 'DAY']
         else:
             ktypes = [args.ktype]
         
+        print(f"  K线类型: {ktypes}")
+        
         # 解析日期
         start_date = datetime.strptime(args.start, '%Y-%m-%d') if args.start else None
         end_date = datetime.strptime(args.end, '%Y-%m-%d') if args.end else None
         
-        # 处理每种K线类型
-        for ktype in ktypes:
-            print(f"\n{'='*50}")
-            print(f"  处理: {args.code} - {ktype}")
-            print('='*50)
-            
-            # 加载数据
-            df = loader.load_kline(args.code, ktype, start_date, end_date)
-            
-            if df.empty:
-                print(f"  [SKIP] 无数据")
-                continue
-            
-            # 计算特征
-            result = calculator.process(df)
-            
-            # 导出
-            code_dir = DATA_PROCESSED / args.code.replace('.', '_')
-            output_path = code_dir / f"kline_features_{ktype}.parquet"
-            export_features(result, output_path)
-            
-            # 打印统计
-            calculator.print_stats(result)
+        # 处理每只股票的每种K线类型
+        total = len(codes) * len(ktypes)
+        current = 0
+        
+        for code in codes:
+            for ktype in ktypes:
+                current += 1
+                print(f"\n{'='*60}")
+                print(f"  [{current}/{total}] 处理: {code} - {ktype}")
+                print('='*60)
+                
+                # 加载数据
+                df = loader.load_kline(code, ktype, start_date, end_date)
+                
+                if df.empty:
+                    print(f"  [SKIP] 无数据")
+                    continue
+                
+                # 计算特征
+                result = calculator.process(df)
+                
+                # 导出
+                code_dir = DATA_PROCESSED / code.replace('.', '_')
+                output_path = code_dir / f"kline_features_{ktype}.parquet"
+                export_features(result, output_path)
+                
+                # 打印统计
+                calculator.print_stats(result)
         
     finally:
         loader.close()

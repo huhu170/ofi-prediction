@@ -56,28 +56,17 @@ outputs/
 
 ---
 
-## 三、表格处理策略
-
-| 类型 | 章节 | 数量 | 处理方式 |
-|------|------|------|----------|
-| **静态/配置表格** | 第1/3章 | ~10个 | **直接写在paper.md中**（MD表格格式） |
-| **实验结果表格** | 第4章 | ~28个 | 脚本生成MD格式 → 复制到paper.md |
-
-> **重要**：所有表格最终都直接写在 `paper.md` 中，不使用外部CSV文件。
-> 实验脚本会输出MD格式的表格，方便直接复制粘贴。
-
----
-
-## 四、命名规范
+## 三、命名规范
 
 | 类型 | 格式 | 示例 |
 |------|------|------|
 | **图片** | `fig_章.节-序号_英文描述.png` | `fig_1.2-1_research_framework.png` |
+| **表格** | `table_章.节-序号_英文描述.csv` | `table_4.1-1_sample_stats.csv` |
 | **源文件** | `fig_章.节-序号_英文描述.drawio` | `fig_1.2-1_research_framework.drawio` |
 
 ---
 
-## 五、图表工具建议
+## 四、图表工具建议
 
 | 图类型 | 推荐工具 | 适用章节 |
 |--------|----------|----------|
@@ -90,7 +79,7 @@ outputs/
 
 ---
 
-## 六、关键里程碑
+## 五、关键里程碑
 
 | 里程碑 | 内容 | 状态 |
 |--------|------|------|
@@ -103,33 +92,33 @@ outputs/
 
 ---
 
-## 七、图表总清单
+## 六、图表总清单
 
 ### 第一章（4个）
 
-| 编号 | 类型 | 处理方式 | 状态 |
-|------|------|----------|------|
-| 图1.2-1 | 流程图 | Draw.io绘制 | ⬜ |
-| 图1.2-2 | 流程图 | Draw.io绘制 | ⬜ |
-| 图1.3-1 | 流程图 | Draw.io绘制 | ⬜ |
-| 表1.1-1 | 静态表格 | **直接写在paper.md** | ⬜ |
+| 编号 | 文件路径 | 类型 | 工具 | 状态 |
+|------|----------|------|------|------|
+| 图1.2-1 | `ch1/figures/fig_1.2-1_research_framework.png` | 流程图 | Draw.io | ⬜ |
+| 图1.2-2 | `ch1/figures/fig_1.2-2_experiment_design.png` | 流程图 | Draw.io | ⬜ |
+| 图1.3-1 | `ch1/figures/fig_1.3-1_innovation_framework.png` | 流程图 | Draw.io | ⬜ |
+| 表1.1-1 | `ch1/tables/table_1.1-1_rq_hypothesis.csv` | 表格 | 手工 | ⬜ |
 
 ### 第三章（12个）
 
-| 编号 | 类型 | 处理方式 | 状态 |
-|------|------|----------|------|
-| 表3.1-1 | 静态表格 | **直接写在paper.md** | ⬜ |
-| 表3.1-2 | 静态表格 | **直接写在paper.md** | ⬜ |
-| 图3.1-1 | 示意图 | Draw.io绘制 | ⬜ |
-| 表3.2-1 | 静态表格 | **直接写在paper.md** | ⬜ |
-| 表3.2-2 | 静态表格 | **直接写在paper.md** | ⬜ |
-| 表3.3-1 | 静态表格 | **直接写在paper.md** | ⬜ |
-| 表3.3-2 | 静态表格 | **直接写在paper.md** | ⬜ |
-| 图3.4-1 | 架构图 | Draw.io绘制 | ⬜ |
-| 表3.4-1 | 静态表格 | **直接写在paper.md** | ⬜ |
-| 表3.4-2 | 静态表格 | **直接写在paper.md** | ⬜ |
-| 表3.5-1 | 静态表格 | **直接写在paper.md** | ⬜ |
-| 表3.5-2 | 静态表格 | **直接写在paper.md** | ⬜ |
+| 编号 | 文件路径 | 类型 | 工具 | 状态 |
+|------|----------|------|------|------|
+| 表3.1-1 | `ch3/tables/table_3.1-1_sample_overview.csv` | 表格 | 脚本 | ⬜ |
+| 表3.1-2 | `ch3/tables/table_3.1-2_data_quality.csv` | 表格 | 脚本 | ⬜ |
+| 图3.1-1 | `ch3/figures/fig_3.1-1_sliding_window.png` | 示意图 | Draw.io | ⬜ |
+| 表3.2-1 | `ch3/tables/table_3.2-1_feature_definition.csv` | 表格 | 手工 | ⬜ |
+| 表3.2-2 | `ch3/tables/table_3.2-2_feature_groups.csv` | 表格 | 手工 | ⬜ |
+| 表3.3-1 | `ch3/tables/table_3.3-1_label_definition.csv` | 表格 | 手工 | ⬜ |
+| 表3.3-2 | `ch3/tables/table_3.3-2_market_state.csv` | 表格 | 手工 | ⬜ |
+| 图3.4-1 | `ch3/figures/fig_3.4-1_model_architecture.png` | 架构图 | Draw.io | ⬜ |
+| 表3.4-1 | `ch3/tables/table_3.4-1_hyperparameters.csv` | 表格 | 手工 | ⬜ |
+| 表3.4-2 | `ch3/tables/table_3.4-2_baseline_config.csv` | 表格 | 手工 | ⬜ |
+| 表3.5-1 | `ch3/tables/table_3.5-1_rolling_window.csv` | 表格 | 手工 | ⬜ |
+| 表3.5-2 | `ch3/tables/table_3.5-2_reproducibility.csv` | 表格 | 手工 | ⬜ |
 
 ### 第四章（27个）
 
@@ -137,7 +126,7 @@ outputs/
 
 ---
 
-## 八、实验执行命令
+## 七、实验执行命令
 
 ```bash
 cd experiments
@@ -157,14 +146,13 @@ python run_all_experiments.py
 
 ---
 
-## 九、更新日志
+## 八、更新日志
 
 | 日期 | 操作 | 备注 |
 |------|------|------|
 | 2026-01-21 | 创建目录结构 | 整合experiment_results/backtest_results/shap_results/todo_list |
 | 2026-01-21 | 完成实验脚本 | 27个实验脚本已创建 |
 | 2026-01-21 | 更新第二章进度 | 文献综述已完成100% |
-| 2026-01-21 | 调整表格策略 | 所有表格直接写在paper.md中，不使用外部CSV |
 
 ---
 
