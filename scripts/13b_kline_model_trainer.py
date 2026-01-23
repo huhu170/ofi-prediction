@@ -38,8 +38,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader, TensorDataset
-from torch.optim import AdamW
-from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts
+from torch.optim import Adam
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 # sklearn
 try:
@@ -54,42 +54,71 @@ except ImportError:
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-# K线特征配置（与11b_kline_feature_calculator.py对齐）
-# 价格相关特征
-PRICE_FEATURES = ['return_1', 'return_5', 'return_20', 'return_zscore', 
-                  'atr_pct', 'range_pct', 'rsi', 'bb_position']
-# 成交量相关特征
-VOLUME_FEATURES = ['ti', 'ti_5', 'ti_20', 'ti_zscore', 
-                   'relative_volume', 'volume_change', 'pv_corr']
-# 技术指标
-TECH_FEATURES = ['macd_dif', 'macd_dea', 'macd', 'volatility_20', 'market_regime']
+# K线特征配置（与论文表3.3-1对齐，共22维）
+# K线形态特征（2维）
+KLINE_FEATURES = ['kline_position', 'range_pct']
+# 价格相关特征（5维）
+PRICE_FEATURES = ['return_1', 'return_5', 'return_20', 'return_60', 'return_zscore']
+# 波动率特征（2维）
+VOLATILITY_FEATURES = ['atr_pct', 'volatility_20']
+# 成交不平衡特征（4维）
+TI_FEATURES = ['ti', 'ti_5', 'ti_60', 'ti_zscore']
+# 成交量特征（3维）
+VOLUME_FEATURES = ['relative_volume', 'volume_change', 'pv_corr']
+# 技术指标（5维）
+TECH_FEATURES = ['rsi', 'bb_position', 'macd_dif', 'macd_dea', 'macd']
+# 市场状态（1维）
+REGIME_FEATURES = ['market_regime']
 
-# 全部特征
-ALL_FEATURES = PRICE_FEATURES + VOLUME_FEATURES + TECH_FEATURES
+# 全部特征（22维，与论文表3.3-1对齐）
+ALL_FEATURES = (KLINE_FEATURES + PRICE_FEATURES + VOLATILITY_FEATURES + 
+                TI_FEATURES + VOLUME_FEATURES + TECH_FEATURES + REGIME_FEATURES)
 
-# 模型超参数
+# 价格相关特征（用于PV-CrossAttention的Query）
+PRICE_RELATED = KLINE_FEATURES + PRICE_FEATURES + VOLATILITY_FEATURES + TECH_FEATURES
+# 成交量相关特征（用于PV-CrossAttention的Key/Value）
+VOLUME_RELATED = TI_FEATURES + VOLUME_FEATURES + REGIME_FEATURES
+
+# 模型超参数（与论文表3.4-3对齐）
 MODEL_CONFIG = {
     'pv_transformer': {
-        'd_model': 128,
+        'd_model': 256,      # 论文表3.4-3: 输出维度256
         'nhead': 8,
         'num_layers': 4,
-        'dim_feedforward': 256,
+        'dim_feedforward': 512,
         'dropout': 0.1,
     },
     'multi_scale': {
-        'd_model': 64,
-        'nhead': 4,
+        'd_model': 256,      # 论文表3.4-3: 各尺度编码器输出256
+        'nhead': 8,
         'num_layers': 2,
         'dropout': 0.1,
-    }
+    },
+    'transformer': {         # 原生Transformer基线（论文表3.4-2a）
+        'd_model': 256,
+        'nhead': 8,
+        'num_layers': 4,
+        'dim_feedforward': 512,
+        'dropout': 0.1,
+    },
+    'lstm': {                # LSTM基线（论文表3.4-2a）
+        'hidden_dim': 128,
+        'num_layers': 2,
+        'dropout': 0.2,
+    },
+    'gru': {                 # GRU基线（论文表3.4-2a）
+        'hidden_dim': 128,
+        'num_layers': 2,
+        'dropout': 0.2,
+    },
 }
 
-# 训练超参数
+# 训练超参数（与论文第三章第四节对齐）
 TRAIN_CONFIG = {
     'batch_size': 64,
     'learning_rate': 1e-4,
     'max_epochs': 100,
-    'early_stopping_patience': 15,
+    'early_stopping_patience': 10,  # 论文：验证集损失连续10个epoch不下降时终止
     'weight_decay': 1e-5,
     'warmup_epochs': 5,
 }
@@ -521,6 +550,323 @@ class LSTMBaseline(nn.Module):
 
 
 # ============================================================
+# 基准模型：GRU（论文表3.4-2a）
+# ============================================================
+
+class GRUBaseline(nn.Module):
+    """GRU基准模型（论文表3.4-2a：2层堆叠，hidden=128，dropout=0.2）"""
+    
+    def __init__(self, input_dim: int, seq_len: int, hidden_dim: int = 128, 
+                 num_layers: int = 2, num_classes: int = NUM_CLASSES):
+        super().__init__()
+        self.model_name = "gru"
+        
+        self.gru = nn.GRU(
+            input_size=input_dim,
+            hidden_size=hidden_dim,
+            num_layers=num_layers,
+            batch_first=True,
+            dropout=0.2 if num_layers > 1 else 0
+        )
+        
+        self.classifier = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(hidden_dim // 2, num_classes)
+        )
+    
+    def forward(self, x: torch.Tensor):
+        gru_out, _ = self.gru(x)
+        last_output = gru_out[:, -1, :]
+        return self.classifier(last_output)
+
+
+# ============================================================
+# 基准模型：原生Transformer（论文表3.4-2a）
+# ============================================================
+
+class TransformerBaseline(nn.Module):
+    """原生Transformer基准模型（论文表3.4-2a：4层Encoder，d_model=256，nhead=8）"""
+    
+    def __init__(self, input_dim: int, seq_len: int, num_classes: int = NUM_CLASSES,
+                 config: dict = None):
+        super().__init__()
+        cfg = config or MODEL_CONFIG['transformer']
+        self.model_name = "transformer"
+        self.d_model = cfg['d_model']
+        
+        # 输入投影
+        self.input_projection = nn.Linear(input_dim, self.d_model)
+        
+        # 可学习位置编码
+        self.pos_encoder = LearnablePositionalEncoding(self.d_model, max_len=seq_len + 1)
+        
+        # Transformer Encoder
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=self.d_model,
+            nhead=cfg['nhead'],
+            dim_feedforward=cfg['dim_feedforward'],
+            dropout=cfg['dropout'],
+            activation='gelu',
+            batch_first=True
+        )
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=cfg['num_layers'])
+        
+        # CLS Token
+        self.cls_token = nn.Parameter(torch.randn(1, 1, self.d_model) * 0.02)
+        
+        # 分类头
+        self.classifier = nn.Sequential(
+            nn.LayerNorm(self.d_model),
+            nn.Linear(self.d_model, self.d_model // 2),
+            nn.GELU(),
+            nn.Dropout(cfg['dropout']),
+            nn.Linear(self.d_model // 2, num_classes)
+        )
+    
+    def forward(self, x: torch.Tensor):
+        batch_size = x.size(0)
+        
+        # 投影到d_model维度
+        x = self.input_projection(x)
+        
+        # 添加CLS token
+        cls_tokens = self.cls_token.expand(batch_size, -1, -1)
+        x = torch.cat([cls_tokens, x], dim=1)
+        
+        # 位置编码 + Transformer
+        x = self.pos_encoder(x)
+        x = self.transformer(x)
+        
+        # 取CLS token输出进行分类
+        cls_output = x[:, 0, :]
+        return self.classifier(cls_output)
+
+
+# ============================================================
+# 基准模型：CNN-LSTM（论文表3.4-2a）
+# ============================================================
+
+class CNNLSTMBaseline(nn.Module):
+    """
+    CNN-LSTM混合模型（论文表3.4-2a）
+    
+    架构：CNN(3层) + LSTM(1层)
+    - CNN层提取局部特征模式
+    - LSTM层捕捉时序依赖
+    """
+    
+    def __init__(self, input_dim: int, seq_len: int, num_classes: int = NUM_CLASSES):
+        super().__init__()
+        self.model_name = "cnn_lstm"
+        
+        # CNN层（3层卷积）
+        self.conv1 = nn.Sequential(
+            nn.Conv1d(input_dim, 64, kernel_size=3, padding=1),
+            nn.BatchNorm1d(64),
+            nn.ReLU(),
+            nn.Dropout(0.2)
+        )
+        self.conv2 = nn.Sequential(
+            nn.Conv1d(64, 128, kernel_size=3, padding=1),
+            nn.BatchNorm1d(128),
+            nn.ReLU(),
+            nn.Dropout(0.2)
+        )
+        self.conv3 = nn.Sequential(
+            nn.Conv1d(128, 128, kernel_size=3, padding=1),
+            nn.BatchNorm1d(128),
+            nn.ReLU(),
+            nn.Dropout(0.2)
+        )
+        
+        # LSTM层（1层）
+        self.lstm = nn.LSTM(
+            input_size=128,
+            hidden_size=128,
+            num_layers=1,
+            batch_first=True,
+            dropout=0
+        )
+        
+        # 分类头
+        self.classifier = nn.Sequential(
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Dropout(0.2),
+            nn.Linear(64, num_classes)
+        )
+    
+    def forward(self, x: torch.Tensor):
+        # x: (batch, seq_len, input_dim)
+        # CNN需要 (batch, channels, seq_len)
+        x = x.transpose(1, 2)
+        
+        # CNN特征提取
+        x = self.conv1(x)
+        x = self.conv2(x)
+        x = self.conv3(x)
+        
+        # 转回 (batch, seq_len, channels) 给LSTM
+        x = x.transpose(1, 2)
+        
+        # LSTM
+        lstm_out, _ = self.lstm(x)
+        last_output = lstm_out[:, -1, :]
+        
+        return self.classifier(last_output)
+
+
+# ============================================================
+# sklearn基准模型包装器（论文表3.4-1）
+# ============================================================
+
+class SklearnModelWrapper:
+    """
+    sklearn模型包装器，提供统一接口
+    
+    支持模型（论文表3.4-1）：
+    - LogisticRegression: 线性模型基准
+    - RandomForest: 非线性机器学习基准
+    - XGBoost: 梯度提升基准
+    """
+    
+    def __init__(self, model_type: str = 'xgboost', num_classes: int = NUM_CLASSES, **kwargs):
+        self.model_type = model_type
+        self.model_name = model_type
+        self.num_classes = num_classes
+        self.model = None
+        self.kwargs = kwargs
+        self._init_model()
+    
+    def _init_model(self):
+        if self.model_type == 'logistic_regression':
+            from sklearn.linear_model import LogisticRegression
+            self.model = LogisticRegression(
+                C=self.kwargs.get('C', 1.0),
+                max_iter=1000,
+                solver='lbfgs',
+                random_state=42
+            )
+        elif self.model_type == 'random_forest':
+            from sklearn.ensemble import RandomForestClassifier
+            self.model = RandomForestClassifier(
+                n_estimators=self.kwargs.get('n_estimators', 300),
+                max_depth=self.kwargs.get('max_depth', 10),
+                min_samples_split=5,
+                random_state=42,
+                n_jobs=-1
+            )
+        elif self.model_type == 'xgboost':
+            try:
+                import xgboost as xgb
+                # 使用hist方法（CPU优化，比默认快很多）
+                self.model = xgb.XGBClassifier(
+                    n_estimators=self.kwargs.get('n_estimators', 300),
+                    max_depth=self.kwargs.get('max_depth', 6),
+                    learning_rate=self.kwargs.get('learning_rate', 0.1),
+                    subsample=0.8,
+                    colsample_bytree=0.8,
+                    objective='multi:softprob',
+                    num_class=self.num_classes,
+                    random_state=42,
+                    tree_method='hist',  # 使用histogram优化
+                    n_jobs=-1,  # 多核并行
+                    use_label_encoder=False,
+                    eval_metric='mlogloss'
+                )
+                print("  [INFO] XGBoost using histogram method with multi-core")
+            except ImportError:
+                print("[WARN] XGBoost not installed, falling back to RandomForest")
+                from sklearn.ensemble import RandomForestClassifier
+                self.model = RandomForestClassifier(n_estimators=300, random_state=42)
+        else:
+            raise ValueError(f"Unknown model type: {self.model_type}")
+    
+    def fit(self, X: np.ndarray, y: np.ndarray):
+        """训练模型（输入需要展平为2D）"""
+        # 将3D (batch, seq, features) 展平为 2D (batch, seq*features)
+        if X.ndim == 3:
+            X = X.reshape(X.shape[0], -1)
+        self.model.fit(X, y)
+        return self
+    
+    def predict(self, X: np.ndarray) -> np.ndarray:
+        """预测类别"""
+        if X.ndim == 3:
+            X = X.reshape(X.shape[0], -1)
+        return self.model.predict(X)
+    
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        """预测概率"""
+        if X.ndim == 3:
+            X = X.reshape(X.shape[0], -1)
+        return self.model.predict_proba(X)
+    
+    def score(self, X: np.ndarray, y: np.ndarray) -> float:
+        """计算准确率"""
+        if X.ndim == 3:
+            X = X.reshape(X.shape[0], -1)
+        return self.model.score(X, y)
+
+
+# ============================================================
+# 模型工厂函数
+# ============================================================
+
+def create_model(model_name: str, input_dim: int, seq_len: int, 
+                 num_classes: int = NUM_CLASSES, **kwargs):
+    """
+    创建模型的工厂函数
+    
+    Args:
+        model_name: 模型名称 ['pv_transformer', 'multi_scale', 'lstm', 'gru', 'cnn_lstm',
+                             'transformer', 'logistic_regression', 'random_forest', 'xgboost']
+        input_dim: 输入特征维度
+        seq_len: 序列长度
+        num_classes: 分类数量
+        
+    Returns:
+        model: 模型实例
+    """
+    model_name = model_name.lower()
+    
+    if model_name == 'lstm':
+        return LSTMBaseline(input_dim, seq_len, num_classes=num_classes)
+    
+    elif model_name == 'gru':
+        return GRUBaseline(input_dim, seq_len, num_classes=num_classes)
+    
+    elif model_name == 'cnn_lstm':
+        return CNNLSTMBaseline(input_dim, seq_len, num_classes=num_classes)
+    
+    elif model_name == 'transformer':
+        return TransformerBaseline(input_dim, seq_len, num_classes=num_classes)
+    
+    elif model_name == 'pv_transformer':
+        # 需要分离价格和成交量特征
+        price_dim = len(PRICE_RELATED)
+        volume_dim = len(VOLUME_RELATED)
+        return PVTransformer(price_dim, volume_dim, seq_len, num_classes=num_classes)
+    
+    elif model_name == 'multi_scale':
+        # 多尺度模型需要不同的输入格式
+        price_dim = len(PRICE_RELATED)
+        volume_dim = len(VOLUME_RELATED)
+        scale_seq_lens = kwargs.get('scale_seq_lens', {'1M': 60, '5M': 24, '60M': 12, 'DAY': 20})
+        return MultiScalePVTransformer(price_dim, volume_dim, scale_seq_lens, num_classes=num_classes)
+    
+    elif model_name in ['logistic_regression', 'random_forest', 'xgboost']:
+        return SklearnModelWrapper(model_name, num_classes=num_classes, **kwargs)
+    
+    else:
+        raise ValueError(f"Unknown model: {model_name}. Available: "
+                        f"lstm, gru, cnn_lstm, transformer, pv_transformer, multi_scale, "
+                        f"logistic_regression, random_forest, xgboost")
+
+
+# ============================================================
 # 训练器
 # ============================================================
 
@@ -537,14 +883,17 @@ class KlineModelTrainer:
         self.device = device
         self.cfg = config or TRAIN_CONFIG
         
-        self.optimizer = AdamW(
+        # 论文：Adam优化器 (β1=0.9, β2=0.999)
+        self.optimizer = Adam(
             model.parameters(),
             lr=self.cfg['learning_rate'],
+            betas=(0.9, 0.999),
             weight_decay=self.cfg['weight_decay']
         )
         
-        self.scheduler = CosineAnnealingWarmRestarts(
-            self.optimizer, T_0=10, T_mult=2
+        # 论文：ReduceLROnPlateau调度策略 (patience=5, factor=0.5)
+        self.scheduler = ReduceLROnPlateau(
+            self.optimizer, mode='min', patience=5, factor=0.5
         )
         
         self.criterion = nn.CrossEntropyLoss()
@@ -552,25 +901,47 @@ class KlineModelTrainer:
         self.best_val_f1 = 0
         self.patience_counter = 0
     
+    def _prepare_input(self, batch):
+        """准备模型输入，支持单尺度和多尺度"""
+        if isinstance(batch[0], dict):
+            # 多尺度数据：batch[0] = {'1M': tensor, '5M': tensor, ...}
+            scale_data = {}
+            for scale, X in batch[0].items():
+                X = X.to(self.device)
+                # 分离价格和成交量特征
+                price_dim = len(PRICE_RELATED)
+                price_x = X[:, :, :price_dim]
+                volume_x = X[:, :, price_dim:]
+                scale_data[scale] = (price_x, volume_x)
+            y = batch[1].to(self.device)
+            return scale_data, y, True  # is_multi_scale=True
+        else:
+            # 单尺度数据
+            X = batch[0].to(self.device)
+            y = batch[1].to(self.device)
+            return X, y, False
+    
     def train_epoch(self, dataloader: DataLoader) -> float:
         """训练一个epoch"""
         self.model.train()
         total_loss = 0
         
         for batch in dataloader:
-            X, y = batch[0].to(self.device), batch[1].to(self.device)
+            data, y, is_multi_scale = self._prepare_input(batch)
             
             self.optimizer.zero_grad()
             
-            # 根据模型类型处理输入
-            if hasattr(self.model, 'model_name') and 'pv' in self.model.model_name:
-                # PV-Transformer需要分离价格和成交量特征
-                price_dim = len(PRICE_FEATURES)
-                price_x = X[:, :, :price_dim]
-                volume_x = X[:, :, price_dim:price_dim + len(VOLUME_FEATURES)]
+            if is_multi_scale:
+                # 多尺度模型
+                logits = self.model(data)
+            elif hasattr(self.model, 'model_name') and 'pv' in self.model.model_name:
+                # 单尺度PV-Transformer需要分离价格和成交量特征
+                price_dim = len(PRICE_RELATED)
+                price_x = data[:, :, :price_dim]
+                volume_x = data[:, :, price_dim:]
                 logits = self.model(price_x, volume_x)
             else:
-                logits = self.model(X)
+                logits = self.model(data)
             
             loss = self.criterion(logits, y)
             loss.backward()
@@ -591,15 +962,17 @@ class KlineModelTrainer:
         
         with torch.no_grad():
             for batch in dataloader:
-                X, y = batch[0].to(self.device), batch[1].to(self.device)
+                data, y, is_multi_scale = self._prepare_input(batch)
                 
-                if hasattr(self.model, 'model_name') and 'pv' in self.model.model_name:
-                    price_dim = len(PRICE_FEATURES)
-                    price_x = X[:, :, :price_dim]
-                    volume_x = X[:, :, price_dim:price_dim + len(VOLUME_FEATURES)]
+                if is_multi_scale:
+                    logits = self.model(data)
+                elif hasattr(self.model, 'model_name') and 'pv' in self.model.model_name:
+                    price_dim = len(PRICE_RELATED)
+                    price_x = data[:, :, :price_dim]
+                    volume_x = data[:, :, price_dim:]
                     logits = self.model(price_x, volume_x)
                 else:
-                    logits = self.model(X)
+                    logits = self.model(data)
                 
                 loss = self.criterion(logits, y)
                 total_loss += loss.item()
@@ -635,10 +1008,12 @@ class KlineModelTrainer:
         for epoch in range(1, max_epochs + 1):
             # 训练
             train_loss = self.train_epoch(train_loader)
-            self.scheduler.step()
             
             # 验证
             val_metrics = self.evaluate(val_loader)
+            
+            # 学习率调度（基于验证损失）
+            self.scheduler.step(val_metrics['loss'])
             
             # 记录
             self.history['train_loss'].append(train_loss)
@@ -649,7 +1024,8 @@ class KlineModelTrainer:
             print(f"Epoch {epoch:3d} | Train Loss: {train_loss:.4f} | "
                   f"Val Loss: {val_metrics['loss']:.4f} | "
                   f"Val Acc: {val_metrics['accuracy']:.4f} | "
-                  f"Val F1: {val_metrics['f1_macro']:.4f}")
+                  f"Val F1: {val_metrics['f1_macro']:.4f} | "
+                  f"LR: {self.optimizer.param_groups[0]['lr']:.2e}")
             
             # Early stopping
             if val_metrics['f1_macro'] > self.best_val_f1:
@@ -695,12 +1071,22 @@ def load_kline_dataset(dataset_path: Path) -> Dict:
     return data
 
 
+def is_multi_scale_dataset(dataset: Dict) -> bool:
+    """判断是否为多尺度数据集"""
+    if 'train' in dataset:
+        train_data = dataset['train']
+        # 多尺度数据集的train是dict，包含'1M','5M'等key
+        if isinstance(train_data, dict) and '1M' in train_data:
+            return True
+    return False
+
+
 def create_dataloaders(
     dataset: Dict,
     batch_size: int = TRAIN_CONFIG['batch_size'],
     feature_order: List[str] = None
 ) -> Tuple[DataLoader, DataLoader, DataLoader]:
-    """创建DataLoader"""
+    """创建DataLoader（单尺度）"""
     
     loaders = {}
     for split in ['train', 'val', 'test']:
@@ -730,9 +1116,87 @@ def create_dataloaders(
                 batch_size=batch_size,
                 shuffle=(split == 'train'),
                 num_workers=0,
-                pin_memory=torch.cuda.is_available()
+                pin_memory=False  # 禁用以避免内存问题
             )
             print(f"  {split}: {len(tensor_ds)} 样本")
+    
+    return loaders.get('train'), loaders.get('val'), loaders.get('test')
+
+
+class MultiScaleDataset(Dataset):
+    """多尺度数据集（用于MultiScalePVTransformer）"""
+    
+    def __init__(self, scale_data: Dict[str, np.ndarray], labels: np.ndarray):
+        """
+        Args:
+            scale_data: {'1M': X_1m, '5M': X_5m, ...}
+            labels: 标签数组
+        """
+        self.scale_data = {k: torch.FloatTensor(v) for k, v in scale_data.items() if k != 'labels'}
+        self.labels = torch.LongTensor(labels)
+        self.scales = [k for k in scale_data.keys() if k != 'labels']
+    
+    def __len__(self):
+        return len(self.labels)
+    
+    def __getitem__(self, idx):
+        # 返回 {scale: X[idx]} 和 label
+        scale_batch = {scale: self.scale_data[scale][idx] for scale in self.scales}
+        return scale_batch, self.labels[idx]
+
+
+def multi_scale_collate_fn(batch):
+    """多尺度数据集的collate函数"""
+    scale_data = {}
+    labels = []
+    
+    scales = batch[0][0].keys()
+    for scale in scales:
+        scale_data[scale] = torch.stack([item[0][scale] for item in batch])
+    labels = torch.stack([item[1] for item in batch])
+    
+    return scale_data, labels
+
+
+def create_multi_scale_dataloaders(
+    dataset: Dict,
+    batch_size: int = TRAIN_CONFIG['batch_size']
+) -> Tuple[DataLoader, DataLoader, DataLoader]:
+    """创建多尺度DataLoader"""
+    
+    loaders = {}
+    for split in ['train', 'val', 'test']:
+        if split in dataset:
+            split_data = dataset[split]
+            
+            # 获取标签
+            labels = split_data.get('labels')
+            if labels is None:
+                print(f"  [WARN] {split} 没有labels，跳过")
+                continue
+            
+            # 确保标签从0开始
+            if hasattr(labels, 'min') and labels.min() == -1:
+                labels = labels + 1
+            
+            # 提取各尺度特征（排除labels）
+            scale_features = {k: v for k, v in split_data.items() if k in ['1M', '5M', '60M', 'DAY']}
+            
+            if not scale_features:
+                print(f"  [WARN] {split} 没有尺度特征，跳过")
+                continue
+            
+            ms_dataset = MultiScaleDataset(scale_features, labels)
+            
+            loaders[split] = DataLoader(
+                ms_dataset,
+                batch_size=batch_size,
+                shuffle=(split == 'train'),
+                num_workers=0,
+                pin_memory=False,
+                collate_fn=multi_scale_collate_fn
+            )
+            print(f"  {split}: {len(ms_dataset)} 样本 (多尺度)")
     
     return loaders.get('train'), loaders.get('val'), loaders.get('test')
 
@@ -747,7 +1211,8 @@ def main():
     parser.add_argument('--code', type=str, default='HK.00700', help='股票代码')
     parser.add_argument('--ktype', type=str, default='1M', help='K线类型')
     parser.add_argument('--model', type=str, default='pv_transformer',
-                        choices=['pv_transformer', 'lstm', 'multi_scale'])
+                        choices=['pv_transformer', 'multi_scale', 'lstm', 'gru', 'cnn_lstm', 
+                                 'transformer', 'logistic_regression', 'random_forest', 'xgboost'])
     parser.add_argument('--epochs', type=int, default=TRAIN_CONFIG['max_epochs'])
     parser.add_argument('--batch-size', type=int, default=TRAIN_CONFIG['batch_size'])
     parser.add_argument('--lr', type=float, default=TRAIN_CONFIG['learning_rate'])
@@ -765,44 +1230,77 @@ def main():
         dataset_path = Path(args.dataset)
     else:
         code_str = args.code.replace('.', '_')
-        dataset_path = DATA_DIR / f"dataset_{code_str}_{args.ktype}.pkl"
+        # multi_scale模型使用multi_scale数据集
+        if args.model == 'multi_scale':
+            dataset_path = DATA_DIR / f"dataset_{code_str}_multi_scale.pkl"
+        else:
+            dataset_path = DATA_DIR / f"dataset_{code_str}_{args.ktype}.pkl"
     
     if not dataset_path.exists():
         print(f"[ERROR] 数据集不存在: {dataset_path}")
-        print("请先运行: python 12b_kline_dataset_builder.py")
+        if args.model == 'multi_scale':
+            print("请先运行: python scripts/12b_kline_dataset_builder.py --code HK.00700 --multi-scale")
+        else:
+            print("请先运行: python 12b_kline_dataset_builder.py")
         return
     
     dataset = load_kline_dataset(dataset_path)
-    train_loader, val_loader, test_loader = create_dataloaders(dataset, args.batch_size)
     
-    # 获取输入维度
-    sample_X, _ = next(iter(train_loader))
-    seq_len, input_dim = sample_X.shape[1], sample_X.shape[2]
-    print(f"  输入维度: seq_len={seq_len}, features={input_dim}")
+    # 检测是否为多尺度数据集
+    is_multi_scale = is_multi_scale_dataset(dataset)
     
-    # 创建模型
-    if args.model == 'pv_transformer':
-        model = PVTransformer(
-            price_dim=len(PRICE_FEATURES),
-            volume_dim=len(VOLUME_FEATURES),
-            seq_len=seq_len
-        )
-    elif args.model == 'lstm':
-        model = LSTMBaseline(input_dim, seq_len)
+    if is_multi_scale:
+        print("  检测到多尺度数据集")
+        train_loader, val_loader, test_loader = create_multi_scale_dataloaders(dataset, args.batch_size)
+        # 多尺度模型 - 不需要input_dim和seq_len，内部自动配置
+        input_dim = len(ALL_FEATURES)
+        seq_len = 60  # dummy，multi_scale模型内部会根据scale配置
+        model = create_model('multi_scale', input_dim=input_dim, seq_len=seq_len)
     else:
-        print(f"[ERROR] 不支持的模型类型: {args.model}")
-        return
+        train_loader, val_loader, test_loader = create_dataloaders(dataset, args.batch_size)
+        # 获取输入维度
+        sample_X, _ = next(iter(train_loader))
+        seq_len, input_dim = sample_X.shape[1], sample_X.shape[2]
+        print(f"  输入维度: seq_len={seq_len}, features={input_dim}")
+        # 创建模型（使用工厂函数）
+        model = create_model(args.model, input_dim=input_dim, seq_len=seq_len)
     
-    # 训练
-    trainer = KlineModelTrainer(model, config={
-        **TRAIN_CONFIG,
-        'learning_rate': args.lr,
-        'max_epochs': args.epochs,
-        'batch_size': args.batch_size
-    })
-    
-    save_path = MODEL_DIR / args.model / f"model_{args.code.replace('.', '_')}_{args.ktype}.pt"
-    trainer.train(train_loader, val_loader, save_path=save_path)
+    # sklearn模型使用不同的训练流程
+    sklearn_models = ['logistic_regression', 'random_forest', 'xgboost']
+    if args.model in sklearn_models:
+        print(f"\n训练sklearn模型: {args.model}")
+        # 获取numpy数据
+        X_train = np.vstack([batch[0].numpy() for batch in train_loader])
+        y_train = np.hstack([batch[1].numpy() for batch in train_loader])
+        X_val = np.vstack([batch[0].numpy() for batch in val_loader])
+        y_val = np.hstack([batch[1].numpy() for batch in val_loader])
+        
+        # 训练
+        model.fit(X_train, y_train)
+        
+        # 评估
+        train_acc = model.score(X_train, y_train)
+        val_acc = model.score(X_val, y_val)
+        print(f"  Train Acc: {train_acc:.4f}")
+        print(f"  Val Acc: {val_acc:.4f}")
+        
+        # 保存
+        save_path = MODEL_DIR / args.model / f"model_{args.code.replace('.', '_')}_{args.ktype}.pkl"
+        save_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(save_path, 'wb') as f:
+            pickle.dump(model, f)
+        print(f"  模型已保存: {save_path}")
+    else:
+        # 深度学习模型
+        trainer = KlineModelTrainer(model, config={
+            **TRAIN_CONFIG,
+            'learning_rate': args.lr,
+            'max_epochs': args.epochs,
+            'batch_size': args.batch_size
+        })
+        
+        save_path = MODEL_DIR / args.model / f"model_{args.code.replace('.', '_')}_{args.ktype}.pt"
+        trainer.train(train_loader, val_loader, save_path=save_path)
     
     # 测试集评估
     if test_loader:

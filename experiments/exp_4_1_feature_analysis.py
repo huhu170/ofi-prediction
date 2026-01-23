@@ -31,24 +31,24 @@ def run_all():
     # 1. Correlation analysis
     print("\n[1/3] Running correlation analysis...")
     try:
-        from exp_4_1_4_correlation import main as correlation_main
-        correlation_main()
+        from exp_4_1_4_correlation import run_experiment as correlation_run
+        correlation_run()
     except Exception as e:
         print(f"  Warning: {e}")
     
     # 2. OLS regression analysis
     print("\n[2/3] Running OLS regression analysis...")
     try:
-        from exp_4_1_5_ols_regression import main as ols_main
-        ols_main()
+        from exp_4_1_5_ols_regression import run_experiment as ols_run
+        ols_run()
     except Exception as e:
         print(f"  Warning: {e}")
     
     # 3. Multi-scale explanatory power comparison
     print("\n[3/3] Running multi-scale comparison...")
     try:
-        from exp_4_1_6_scale_comparison import main as scale_main
-        scale_main()
+        from exp_4_1_6_scale_comparison import run_experiment as scale_run
+        scale_run()
     except Exception as e:
         print(f"  Warning: {e}")
     

@@ -96,44 +96,38 @@ VAL_RATIO = 0.15
 TEST_RATIO = 0.15
 
 # K线特征列（与论文表3.3-1对齐，共22维）
-# 参考论文表3.4-3：输入维度 (T, 22)
+# 特征顺序：PRICE_RELATED(14维) + VOLUME_RELATED(8维)，用于PV-CrossAttention
 KLINE_FEATURE_COLS = [
-    # === 价格特征 (6维) ===
-    # 多周期收益率 (4维) - 公式3.2-2
-    'return_1', 'return_5', 'return_20', 'return_60',
-    # K线形态 (2维) - 论文表3.3-1
+    # === PRICE_RELATED 特征 (14维，用于Query) ===
+    # K线形态 (2维)
     'kline_position',  # (C-O)/(H-L)
     'range_pct',       # (H-L)/O - 公式3.2-6
+    # 价格收益率 (5维)
+    'return_1', 'return_5', 'return_20', 'return_60', 'return_zscore',
+    # 波动率 (2维)
+    'atr_pct',         # ATR/价格 - 公式3.2-5
+    'volatility_20',   # STD_20(r)
+    # 技术指标 (5维)
+    'rsi',             # RSI(14)
+    'bb_position',     # 布林带位置
+    'macd_dif',        # MACD DIF
+    'macd_dea',        # MACD DEA
+    'macd',            # MACD柱
     
-    # === 成交量特征 (2维) ===
-    'relative_volume',  # V/MA_20(V) - 公式3.2-3
-    'volume_change',    # V_t/V_{t-1}
-    
-    # === 量价特征 (4维) ===
-    'ti',       # 成交不平衡 - 公式3.2-1
-    'ti_5',     # 5分钟累积TI
-    'ti_60',    # 60分钟累积TI
-    'pv_corr',  # 量价相关性 - 公式3.2-4
-    
-    # === 波动特征 (2维) ===
-    'atr_pct',       # ATR/价格 - 公式3.2-5
-    'volatility_20', # STD_20(r)
-    
-    # === 技术指标 (5维) ===
-    'rsi',        # RSI(14)
-    'macd_dif',   # MACD DIF
-    'macd_dea',   # MACD DEA
-    'macd',       # MACD柱
-    'bb_position', # 布林带位置
-    
-    # === 滚动统计 (2维) ===
-    'ti_zscore',     # TI的Z-score
-    'return_zscore', # 收益率Z-score
-    
-    # === 市场状态 (1维) ===
-    'market_regime'  # 公式3.3-1
+    # === VOLUME_RELATED 特征 (8维，用于Key/Value) ===
+    # 成交不平衡 (4维)
+    'ti',              # 成交不平衡 - 公式3.2-1
+    'ti_5',            # 5分钟累积TI
+    'ti_60',           # 60分钟累积TI
+    'ti_zscore',       # TI的Z-score
+    # 成交量 (3维)
+    'relative_volume', # V/MA_20(V) - 公式3.2-3
+    'volume_change',   # V_t/V_{t-1}
+    'pv_corr',         # 量价相关性 - 公式3.2-4
+    # 市场状态 (1维)
+    'market_regime'    # 公式3.3-1
 ]
-# 总计: 6 + 2 + 4 + 2 + 5 + 2 + 1 = 22维
+# 总计: 14 + 8 = 22维
 
 # 数据路径
 DATA_PROCESSED = Path(os.getenv("DATA_PROCESSED", "data/processed"))
@@ -176,7 +170,10 @@ class RollingScaler:
         """应用标准化"""
         if not self.is_fitted:
             raise ValueError("Scaler未拟合，请先调用fit()")
-        return (X - self.mean) / self.std
+        result = (X - self.mean) / self.std
+        # 将NaN替换为0（标准化后的均值）
+        result = np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
+        return result
     
     def fit_transform(self, X: np.ndarray, feature_names: List[str] = None) -> np.ndarray:
         self.fit(X, feature_names)
@@ -245,8 +242,9 @@ class KlineSequenceGenerator:
         indices = list(range(0, max_start, self.step))
         num_sequences = len(indices)
         
-        X = np.zeros((num_sequences, self.seq_len, features.shape[1]))
-        y = np.zeros(num_sequences)
+        # 使用float32节省内存
+        X = np.zeros((num_sequences, self.seq_len, features.shape[1]), dtype=np.float32)
+        y = np.zeros(num_sequences, dtype=np.float32)
         
         for i, start_idx in enumerate(indices):
             X[i] = features[start_idx : start_idx + self.seq_len]
@@ -450,9 +448,9 @@ class KlineDatasetBuilder:
         seq_len = config['input_len']
         horizon_steps = config['horizon_steps'].get(self.horizon_minutes, 1)
         
-        # 准备特征和标签
+        # 准备特征和标签（使用float32节省内存）
         feature_cols = [c for c in self.feature_cols if c in df.columns]
-        features = df[feature_cols].values
+        features = df[feature_cols].values.astype(np.float32)
         
         label_col = f'label_{self.horizon_minutes}'
         if label_col not in df.columns:
@@ -484,31 +482,33 @@ class KlineDatasetBuilder:
             'test_size': len(X_test_scaled),
         }
         
-        if HAS_TORCH:
-            return {
-                'train': KlineDataset(X_train_scaled, splits['train'][1]),
-                'val': KlineDataset(X_val_scaled, splits['val'][1]),
-                'test': KlineDataset(X_test_scaled, splits['test'][1]),
-                'scaler': self.scaler,
-                'feature_names': feature_cols,
-            }
-        else:
-            return {
-                'train': (X_train_scaled, splits['train'][1]),
-                'val': (X_val_scaled, splits['val'][1]),
-                'test': (X_test_scaled, splits['test'][1]),
-                'scaler': self.scaler,
-                'feature_names': feature_cols,
-            }
+        # 保存为原始数组格式（便于其他脚本加载）
+        return {
+            'train': (X_train_scaled, splits['train'][1]),
+            'val': (X_val_scaled, splits['val'][1]),
+            'test': (X_test_scaled, splits['test'][1]),
+            'scaler_params': {
+                'mean': self.scaler.mean,
+                'std': self.scaler.std,
+                'feature_names': self.scaler.feature_names,
+            },
+            'feature_names': feature_cols,
+            'stats': self.stats,
+        }
     
-    def build_multi_scale(self, code: str) -> Optional[Dict]:
+    def build_multi_scale(self, code: str, max_samples: int = 0) -> Optional[Dict]:
         """
         构建多尺度数据集（用于LSF模块）
         
+        Args:
+            max_samples: 每尺度最多使用最近 N 条生成序列，0=不限制（节省内存）
+        
         Returns:
-            {'train': MultiScaleDataset, 'val': ..., 'test': ...}
+            {'train': {scale: X, 'labels': y}, 'val': ..., 'test': ...}
         """
         print("\n构建多尺度数据集...")
+        if max_samples:
+            print(f"  [max_samples={max_samples}] 降采样以节省内存")
         
         # 加载各尺度数据
         scale_features = {}
@@ -519,20 +519,35 @@ class KlineDatasetBuilder:
             if df is None:
                 print(f"  [SKIP] {ktype} 数据缺失")
                 continue
+            if max_samples and len(df) > max_samples:
+                df = df.tail(max_samples).reset_index(drop=True)
             
             config = KLINE_SCALES[ktype]
             feature_cols = [c for c in self.feature_cols if c in df.columns]
             
-            # 生成序列
+            # 生成序列（float32 省内存）
             seq_len = config['input_len']
             horizon_steps = config['horizon_steps'].get(self.horizon_minutes, 1)
             generator = KlineSequenceGenerator(seq_len, horizon_steps)
             
-            features = df[feature_cols].values
+            features = df[feature_cols].values.astype(np.float32)
             label_col = f'label_{self.horizon_minutes}'
-            labels = df[label_col].values if label_col in df.columns else np.zeros(len(df))
+            labels = df[label_col].values if label_col in df.columns else np.zeros(len(df), dtype=np.float32)
+            
+            # NaN处理：用0填充
+            nan_count = np.isnan(features).sum()
+            if nan_count > 0:
+                print(f"    [{ktype}] 检测到 {nan_count} 个 NaN，已填充为0")
+                features = np.nan_to_num(features, nan=0.0)
             
             X, y = generator.generate(features, labels)
+            
+            # 序列生成后再次检查NaN
+            seq_nan = np.isnan(X).sum()
+            if seq_nan > 0:
+                print(f"    [{ktype}] 序列中检测到 {seq_nan} 个 NaN，已填充为0")
+                X = np.nan_to_num(X, nan=0.0)
+            
             scale_features[ktype] = {'X': X, 'y': y}
             min_len = min(min_len, len(X))
         
@@ -559,10 +574,49 @@ class KlineDatasetBuilder:
         
         result = {'train': {}, 'val': {}, 'test': {}}
         
+        # 对每个尺度进行标准化（用训练集fit）
+        print("  标准化各尺度数据...")
         for ktype, data in scale_features.items():
-            result['train'][ktype] = data['X'][:train_end]
-            result['val'][ktype] = data['X'][train_end + gap : val_end]
-            result['test'][ktype] = data['X'][val_end + gap:]
+            X = data['X'].copy()
+            
+            # 先处理极端值和inf（在标准化前）
+            X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+            # 用分位数clip极端值
+            for f in range(X.shape[-1]):
+                col = X[:, :, f].flatten()
+                p1, p99 = np.percentile(col, [1, 99])
+                X[:, :, f] = np.clip(X[:, :, f], p1, p99)
+            
+            X_train = X[:train_end]
+            X_val = X[train_end + gap : val_end]
+            X_test = X[val_end + gap:]
+            
+            # 计算训练集的均值和标准差
+            train_flat = X_train.reshape(-1, X_train.shape[-1])
+            mean = np.mean(train_flat, axis=0, keepdims=True)
+            std = np.std(train_flat, axis=0, keepdims=True)
+            std = np.where(std < 1e-8, 1.0, std)
+            
+            # 标准化
+            X_train_scaled = (X_train - mean) / std
+            X_val_scaled = (X_val - mean) / std
+            X_test_scaled = (X_test - mean) / std
+            
+            # 再次clip到合理范围
+            X_train_scaled = np.clip(X_train_scaled, -10, 10)
+            X_val_scaled = np.clip(X_val_scaled, -10, 10)
+            X_test_scaled = np.clip(X_test_scaled, -10, 10)
+            
+            # 确保没有NaN
+            X_train_scaled = np.nan_to_num(X_train_scaled, nan=0.0)
+            X_val_scaled = np.nan_to_num(X_val_scaled, nan=0.0)
+            X_test_scaled = np.nan_to_num(X_test_scaled, nan=0.0)
+            
+            result['train'][ktype] = X_train_scaled.astype(np.float32)
+            result['val'][ktype] = X_val_scaled.astype(np.float32)
+            result['test'][ktype] = X_test_scaled.astype(np.float32)
+            
+            print(f"    {ktype}: train={len(X_train_scaled)}, val={len(X_val_scaled)}, test={len(X_test_scaled)}")
         
         result['train']['labels'] = main_labels[:train_end]
         result['val']['labels'] = main_labels[train_end + gap : val_end]
@@ -601,11 +655,6 @@ def export_dataset(
         pickle.dump(dataset_dict, f)
     
     print(f"  [OK] 数据集已保存: {output_path}")
-    
-    # 保存标准化参数
-    if 'scaler' in dataset_dict:
-        scaler_path = output_dir / f"scaler_{code.replace('.', '_')}_{ktype}.pkl"
-        dataset_dict['scaler'].save(scaler_path)
 
 
 # ============================================================
@@ -636,6 +685,8 @@ def main():
                         help='预测步长（分钟）')
     parser.add_argument('--multi-scale', action='store_true', 
                         help='构建多尺度数据集')
+    parser.add_argument('--max-samples', type=int, default=0,
+                        help='多尺度模式下降采样（取最近N条），0=不限制，用于节省内存')
     parser.add_argument('--all', action='store_true',
                         help='构建所有股票（从processed目录获取列表）')
     parser.add_argument('--output', type=str, default='data/datasets',
@@ -674,7 +725,7 @@ def main():
         
         if args.multi_scale:
             print("  模式: 多尺度数据集")
-            result = builder.build_multi_scale(code)
+            result = builder.build_multi_scale(code, max_samples=args.max_samples)
             if result:
                 export_dataset(result, output_dir, code, 'multi_scale')
         else:

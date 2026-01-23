@@ -66,11 +66,12 @@ KLINE_TYPES = ['1M', '5M', '60M', 'DAY']
 # 特征配置（与论文公式对齐）
 # ============================================================
 
-# 特征分组（与11b_kline_feature_calculator.py对齐）
+# 特征分组（与11b_kline_feature_calculator.py对齐，论文表3.3-1共22维）
 FEATURE_GROUPS = {
-    '价格动量': ['return_1', 'return_5', 'return_20', 'return_zscore'],
-    '波动率': ['atr_pct', 'range_pct', 'volatility_20'],
-    '成交不平衡': ['ti', 'ti_5', 'ti_20', 'ti_zscore'],
+    'K线形态': ['kline_position', 'range_pct'],
+    '价格动量': ['return_1', 'return_5', 'return_20', 'return_60', 'return_zscore'],
+    '波动率': ['atr_pct', 'volatility_20'],
+    '成交不平衡': ['ti', 'ti_5', 'ti_60', 'ti_zscore'],
     '成交量': ['relative_volume', 'volume_change', 'pv_corr'],
     '技术指标': ['rsi', 'bb_position', 'macd_dif', 'macd_dea', 'macd'],
     '市场状态': ['market_regime'],
@@ -79,18 +80,20 @@ FEATURE_GROUPS = {
 # 全部特征列表
 ALL_FEATURES = [f for features in FEATURE_GROUPS.values() for f in features]
 
-# 特征中文名
+# 特征中文名（与论文表3.3-1对齐）
 FEATURE_NAMES_CN = {
+    'kline_position': 'K线形态',
+    'range_pct': '日内波幅',
     'return_1': '1分钟收益率',
     'return_5': '5分钟收益率',
     'return_20': '20分钟收益率',
+    'return_60': '60分钟收益率',
     'return_zscore': '收益率Z-score',
     'atr_pct': 'ATR百分比',
-    'range_pct': '日内波幅',
     'volatility_20': '20期波动率',
     'ti': '成交不平衡(TI)',
     'ti_5': '5期累积TI',
-    'ti_20': '20期累积TI',
+    'ti_60': '60期累积TI',
     'ti_zscore': 'TI Z-score',
     'relative_volume': '相对成交量',
     'volume_change': '成交量变化',

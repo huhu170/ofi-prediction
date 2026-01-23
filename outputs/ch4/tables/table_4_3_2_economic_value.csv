@@ -1,0 +1,7 @@
+﻿模型,总收益率(%),年化收益率(%),夏普比率,最大回撤(%),胜率(%),交易次数
+LSTM,nan,nan,nan,nan,54.9,5305
+GRU,nan,nan,nan,nan,54.3,5305
+CNN-LSTM,nan,nan,nan,nan,56.5,5303
+Transformer,nan,nan,nan,nan,56.0,5303
+PV-Transformer,nan,nan,nan,nan,56.4,5303
+PV-Transformer+LSF,nan,nan,nan,nan,57.4,5301
