@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Optional, List, Dict, Tuple, Union
 
 # 解决Windows编码问题
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', line_buffering=True)
 
 # 加载环境变量
 from dotenv import load_dotenv
@@ -89,10 +89,10 @@ MODEL_CONFIG = {
         'dropout': 0.1,
     },
     'multi_scale': {
-        'd_model': 256,      # 论文表3.4-3: 各尺度编码器输出256
-        'nhead': 8,
-        'num_layers': 2,
-        'dropout': 0.1,
+        'd_model': 64,       # 缩小模型以适应多尺度数据量（~5000样本）
+        'nhead': 4,
+        'num_layers': 1,
+        'dropout': 0.2,      # 加大dropout防过拟合
     },
     'transformer': {         # 原生Transformer基线（论文表3.4-2a）
         'd_model': 256,
@@ -420,7 +420,7 @@ class MultiScalePVTransformer(nn.Module):
         self,
         price_dim: int,
         volume_dim: int,
-        scale_seq_lens: Dict[str, int],  # {'1M': 60, '5M': 24, '60M': 12, 'DAY': 20}
+        scale_seq_lens: Dict[str, int],  # {'1M': 60, '5M': 24, '60M': 12}
         num_classes: int = NUM_CLASSES,
         config: dict = None
     ):
@@ -762,6 +762,7 @@ class SklearnModelWrapper:
             try:
                 import xgboost as xgb
                 # 使用hist方法（CPU优化，比默认快很多）
+                use_gpu = torch.cuda.is_available()
                 self.model = xgb.XGBClassifier(
                     n_estimators=self.kwargs.get('n_estimators', 300),
                     max_depth=self.kwargs.get('max_depth', 6),
@@ -771,12 +772,12 @@ class SklearnModelWrapper:
                     objective='multi:softprob',
                     num_class=self.num_classes,
                     random_state=42,
-                    tree_method='hist',  # 使用histogram优化
-                    n_jobs=-1,  # 多核并行
-                    use_label_encoder=False,
+                    tree_method='hist',
+                    device='cuda' if use_gpu else 'cpu',
+                    n_jobs=-1,
                     eval_metric='mlogloss'
                 )
-                print("  [INFO] XGBoost using histogram method with multi-core")
+                print(f"  [INFO] XGBoost using hist method with {'GPU (cuda)' if use_gpu else 'CPU multi-core'}")
             except ImportError:
                 print("[WARN] XGBoost not installed, falling back to RandomForest")
                 from sklearn.ensemble import RandomForestClassifier
@@ -854,7 +855,7 @@ def create_model(model_name: str, input_dim: int, seq_len: int,
         # 多尺度模型需要不同的输入格式
         price_dim = len(PRICE_RELATED)
         volume_dim = len(VOLUME_RELATED)
-        scale_seq_lens = kwargs.get('scale_seq_lens', {'1M': 60, '5M': 24, '60M': 12, 'DAY': 20})
+        scale_seq_lens = kwargs.get('scale_seq_lens', {'1M': 60, '5M': 24, '60M': 12})
         return MultiScalePVTransformer(price_dim, volume_dim, scale_seq_lens, num_classes=num_classes)
     
     elif model_name in ['logistic_regression', 'random_forest', 'xgboost']:
@@ -877,7 +878,8 @@ class KlineModelTrainer:
         self,
         model: nn.Module,
         device: torch.device = DEVICE,
-        config: dict = None
+        config: dict = None,
+        class_weights: torch.Tensor = None
     ):
         self.model = model.to(device)
         self.device = device
@@ -896,7 +898,15 @@ class KlineModelTrainer:
             self.optimizer, mode='min', patience=5, factor=0.5
         )
         
-        self.criterion = nn.CrossEntropyLoss()
+        # 加权交叉熵损失（缓解类别不平衡）
+        # 参考: DeepLOB (Zhang et al., 2019) 使用 weighted categorical cross-entropy
+        if class_weights is not None:
+            self.criterion = nn.CrossEntropyLoss(weight=class_weights.to(device))
+            print(f"  [Loss] Weighted CrossEntropyLoss, weights={class_weights.tolist()}")
+        else:
+            self.criterion = nn.CrossEntropyLoss()
+            print(f"  [Loss] CrossEntropyLoss (unweighted)")
+        
         self.history = {'train_loss': [], 'val_loss': [], 'val_acc': [], 'val_f1': []}
         self.best_val_f1 = 0
         self.patience_counter = 0
@@ -1060,6 +1070,38 @@ class KlineModelTrainer:
 
 
 # ============================================================
+# 类别权重计算
+# ============================================================
+
+def compute_class_weights(labels: np.ndarray, num_classes: int = 3) -> torch.Tensor:
+    """
+    根据训练集标签分布计算类别权重（逆频率法）
+    
+    权重公式: w_c = N / (K * n_c)
+    其中 N=总样本数, K=类别数, n_c=第c类样本数
+    
+    参考: DeepLOB (Zhang et al., 2019) 使用加权交叉熵缓解类别不平衡
+    
+    Args:
+        labels: 标签数组（PyTorch格式: 0/1/2）
+        num_classes: 类别数
+    
+    Returns:
+        weights: 类别权重张量
+    """
+    counts = np.bincount(labels.astype(int), minlength=num_classes)
+    total = len(labels)
+    
+    # 逆频率权重
+    weights = total / (num_classes * counts.astype(float))
+    # 防止除零
+    weights = np.where(counts == 0, 1.0, weights)
+    
+    print(f"  [ClassWeights] counts={counts.tolist()}, weights={[f'{w:.3f}' for w in weights]}")
+    return torch.FloatTensor(weights)
+
+
+# ============================================================
 # 数据加载
 # ============================================================
 
@@ -1180,7 +1222,7 @@ def create_multi_scale_dataloaders(
                 labels = labels + 1
             
             # 提取各尺度特征（排除labels）
-            scale_features = {k: v for k, v in split_data.items() if k in ['1M', '5M', '60M', 'DAY']}
+            scale_features = {k: v for k, v in split_data.items() if k in ['1M', '5M', '60M']}
             
             if not scale_features:
                 print(f"  [WARN] {split} 没有尺度特征，跳过")
@@ -1265,8 +1307,27 @@ def main():
         # 创建模型（使用工厂函数）
         model = create_model(args.model, input_dim=input_dim, seq_len=seq_len)
     
+    # 计算类别权重（从训练集标签）
+    print("\n计算类别权重...")
+    if is_multi_scale:
+        train_labels = dataset['train'].get('labels', np.array([]))
+    else:
+        train_labels = dataset['train'][1] if isinstance(dataset['train'], tuple) else np.array([])
+    
+    if len(train_labels) > 0:
+        # 确保标签是 PyTorch 格式 {0,1,2}
+        if hasattr(train_labels, 'min') and train_labels.min() < 0:
+            train_labels_for_weights = (train_labels + 1).astype(int)
+        else:
+            train_labels_for_weights = train_labels.astype(int)
+        class_weights = compute_class_weights(train_labels_for_weights, num_classes=3)
+    else:
+        class_weights = None
+        print("  [WARN] 无法获取训练标签，使用等权损失函数")
+    
     # sklearn模型使用不同的训练流程
     sklearn_models = ['logistic_regression', 'random_forest', 'xgboost']
+    trainer = None
     if args.model in sklearn_models:
         print(f"\n训练sklearn模型: {args.model}")
         # 获取numpy数据
@@ -1274,6 +1335,14 @@ def main():
         y_train = np.hstack([batch[1].numpy() for batch in train_loader])
         X_val = np.vstack([batch[0].numpy() for batch in val_loader])
         y_val = np.hstack([batch[1].numpy() for batch in val_loader])
+        
+        # sklearn模型的类别平衡通过 class_weight='balanced' 参数实现
+        if hasattr(model, 'set_params'):
+            try:
+                model.set_params(class_weight='balanced')
+                print("  [sklearn] class_weight='balanced' applied")
+            except (TypeError, ValueError):
+                pass
         
         # 训练
         model.fit(X_train, y_train)
@@ -1290,26 +1359,44 @@ def main():
         with open(save_path, 'wb') as f:
             pickle.dump(model, f)
         print(f"  模型已保存: {save_path}")
+        
+        # sklearn测试集评估
+        if test_loader:
+            X_test = np.vstack([batch[0].numpy() for batch in test_loader])
+            y_test = np.hstack([batch[1].numpy() for batch in test_loader])
+            
+            from sklearn.metrics import accuracy_score, f1_score
+            y_pred = model.predict(X_test)
+            test_acc = accuracy_score(y_test, y_pred)
+            test_f1_macro = f1_score(y_test, y_pred, average='macro')
+            test_f1_weighted = f1_score(y_test, y_pred, average='weighted')
+            
+            print(f"\n{'='*60}")
+            print(f"  测试集评估")
+            print(f"{'='*60}")
+            print(f"  accuracy:    {test_acc:.4f}")
+            print(f"  f1_macro:    {test_f1_macro:.4f}")
+            print(f"  f1_weighted: {test_f1_weighted:.4f}")
     else:
-        # 深度学习模型
+        # 深度学习模型（传入class_weights）
         trainer = KlineModelTrainer(model, config={
             **TRAIN_CONFIG,
             'learning_rate': args.lr,
             'max_epochs': args.epochs,
             'batch_size': args.batch_size
-        })
+        }, class_weights=class_weights)
         
         save_path = MODEL_DIR / args.model / f"model_{args.code.replace('.', '_')}_{args.ktype}.pt"
         trainer.train(train_loader, val_loader, save_path=save_path)
-    
-    # 测试集评估
-    if test_loader:
-        print("\n" + "="*60)
-        print("  测试集评估")
-        print("="*60)
-        test_metrics = trainer.evaluate(test_loader)
-        for k, v in test_metrics.items():
-            print(f"  {k}: {v:.4f}")
+        
+        # 深度学习测试集评估
+        if test_loader:
+            print(f"\n{'='*60}")
+            print(f"  测试集评估")
+            print(f"{'='*60}")
+            test_metrics = trainer.evaluate(test_loader)
+            for k, v in test_metrics.items():
+                print(f"  {k}: {v:.4f}")
     
     print("\n[DONE] 训练完成！")
 

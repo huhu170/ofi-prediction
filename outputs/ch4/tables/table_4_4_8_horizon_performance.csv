@@ -1,0 +1,13 @@
+﻿模型,预测步长,Accuracy,F1-macro
+LSTM,5min,0.5215,0.4996
+LSTM,15min,0.4803,0.4646
+LSTM,30min,0.4153,0.3993
+XGBoost,5min,0.5547,0.5323
+XGBoost,15min,0.5046,0.4892
+XGBoost,30min,0.4386,0.4226
+Transformer,5min,0.5807,0.5543
+Transformer,15min,0.5284,0.5135
+Transformer,30min,0.4610,0.4489
+PV-Transformer+LSF,5min,0.5873,0.5658
+PV-Transformer+LSF,15min,0.5472,0.5237
+PV-Transformer+LSF,30min,0.4722,0.4517

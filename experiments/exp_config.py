@@ -278,34 +278,21 @@ EXPERIMENT_SCRIPTS = {
     '4.1.3': ('exp_4_1_3_label_balance.py', '标签分布检验'),
     '4.1.4': ('exp_4_1_4_correlation.py', '相关性检验'),
     '4.1.5': ('exp_4_1_5_ols_regression.py', 'OLS回归分析'),
-    '4.1.6': ('exp_4_1_6_scale_comparison.py', '多尺度解释力对比'),
-    
+
     # 4.2节 模型性能评估
-    '4.2.1': ('exp_4_2_1_baseline_models.py', '基准模型评估'),
     '4.2.2': ('exp_4_2_2_deep_models.py', '深度学习模型评估'),
-    '4.2.3a': ('exp_4_2_3a_pv_crossattn_ablation.py', 'PV-CrossAttention消融'),
-    '4.2.3b': ('exp_4_2_3b_lsf_ablation.py', 'LSF消融实验'),
-    '4.2.4': ('exp_4_2_4_feature_ablation.py', '特征消融实验'),
-    '4.2.5': ('exp_4_2_5_threshold_sensitivity.py', '标签阈值敏感性'),
-    
+    '4.2.2s': ('exp_4_2_eval_sklearn.py', 'sklearn模型评估'),
+    '4.2.2m': ('exp_4_2_extract_metrics.py', '模型指标汇总与对比'),
+
     # 4.3节 策略回测
     '4.3.1': ('exp_4_3_1_backtest_config.py', '回测参数配置'),
-    '4.3.2': ('exp_4_3_2_backtest.py', '模型回测'),
-    '4.3.3': ('exp_4_3_3_scale_comparison.py', '多尺度回测对比'),
-    '4.3.4': ('exp_4_3_4_cost_sensitivity.py', '交易成本敏感性'),
-    
+    '4.3.2': ('exp_4_3_real_backtest.py', '真实数据策略回测'),
+    '4.3.4': ('cost_sensitivity_real.py', '交易成本敏感性（真实回测）'),
+
     # 4.4节 可解释性与稳健性
-    '4.4.1': ('exp_4_4_1_shap_analysis.py', 'SHAP归因分析'),
-    '4.4.2': ('exp_4_4_2_regime_split.py', '市场状态分组检验'),
-    '4.4.2a': ('exp_4_4_2a_event_study.py', '金融事件案例研究'),
-    '4.4.3': ('exp_4_4_3_asset_split.py', '资产类型分组检验'),
-    '4.4.5': ('exp_4_4_5_granger_causality.py', 'Granger因果检验'),
-    '4.4.6': ('exp_4_4_6_causal_feature_comparison.py', '因果特征子集验证'),
-    '4.4.7': ('exp_4_4_7_counterfactual.py', '反事实分析'),
-    '4.4.8': ('exp_4_4_8_decay_analysis.py', '预测能力衰减分析'),
-    '4.4.9': ('exp_4_4_9_market_state.py', '市场状态预测对比'),
-    '4.4.10': ('exp_4_4_10_rolling_training.py', '滚动训练有效性'),
-    '4.4.11': ('exp_4_4_11_shap_vs_causal.py', 'SHAP与Granger对比'),
+    '4.4.1': ('exp_4_4_1_shap_analysis.py', 'XGBoost特征重要性分析'),
+    '4.4.5': ('exp_4_4_5_granger_causality.py', 'Granger因果检验（真实数据）'),
+    '4.4.2': ('exp_4_4_2_regime_split.py', '市场状态异质性检验（真实数据）'),
 }
 
 

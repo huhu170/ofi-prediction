@@ -1,0 +1,31 @@
+﻿特征代码,特征名称,预测步长,F统计量,p值,因果显著
+ti,成交不平衡(TI),5min,12.75,1.00e-04,是***
+ti,成交不平衡(TI),15min,10.32,1.40e-04,是***
+ti,成交不平衡(TI),30min,6.13,1.98e-04,是***
+ti_zscore,TI Z-score,5min,10.99,5.38e-04,是***
+ti_zscore,TI Z-score,15min,7.93,6.52e-04,是***
+ti_zscore,TI Z-score,30min,4.87,9.77e-04,是***
+return_1,1分钟收益率,5min,8.92,0.0016,是**
+return_1,1分钟收益率,15min,6.18,0.0024,是**
+return_1,1分钟收益率,30min,3.89,0.0041,是**
+relative_volume,相对成交量,5min,7.05,0.0043,是**
+relative_volume,相对成交量,15min,6.73,0.0061,是**
+relative_volume,相对成交量,30min,3.78,0.0093,是**
+pv_corr,量价相关性,5min,5.93,0.0121,是*
+pv_corr,量价相关性,15min,4.38,0.0155,是*
+pv_corr,量价相关性,30min,2.80,0.0236,是*
+rsi,RSI(14),5min,4.80,0.0296,是*
+rsi,RSI(14),15min,4.07,0.0286,是*
+rsi,RSI(14),30min,2.96,0.0469,是*
+atr_pct,ATR百分比,5min,2.20,0.1166,否
+atr_pct,ATR百分比,15min,1.02,0.1841,否
+atr_pct,ATR百分比,30min,1.42,0.2925,否
+macd,MACD柱,5min,1.74,0.1765,否
+macd,MACD柱,15min,0.70,0.2144,否
+macd,MACD柱,30min,0.67,0.3832,否
+bb_position,布林带位置,5min,1.67,0.1853,否
+bb_position,布林带位置,15min,1.36,0.2726,否
+bb_position,布林带位置,30min,0.41,0.4638,否
+volatility_20,20期波动率,5min,1.72,0.3334,否
+volatility_20,20期波动率,15min,0.54,0.3718,否
+volatility_20,20期波动率,30min,0.77,0.6398,否

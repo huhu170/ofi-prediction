@@ -90,6 +90,15 @@ KLINE_SCALES = {
 # 默认预测步长（分钟）
 DEFAULT_HORIZON = 5
 
+# 标签阈值模式: 'adaptive' = 分位数自适应（推荐）, 'fixed' = 固定值
+LABEL_ALPHA_MODE = 'adaptive'
+# 自适应模式: 取 |future_return| 的第 LABEL_PERCENTILE 分位数作为alpha，使三类标签接近均衡
+# 参考: DeepLOB (Zhang et al., 2019) 推荐 α 使类别比例约 20%/60%/20%
+# 本研究目标: 约 33%/33%/33%，对应 percentile=33
+LABEL_PERCENTILE = 33
+# 固定模式: 使用此固定值（仅当 LABEL_ALPHA_MODE='fixed' 时生效）
+LABEL_ALPHA_FIXED = 0.002
+
 # 数据划分比例
 TRAIN_RATIO = 0.7
 VAL_RATIO = 0.15
@@ -131,6 +140,71 @@ KLINE_FEATURE_COLS = [
 
 # 数据路径
 DATA_PROCESSED = Path(os.getenv("DATA_PROCESSED", "data/processed"))
+
+
+def compute_adaptive_alpha(future_returns: np.ndarray, percentile: int = LABEL_PERCENTILE) -> float:
+    """
+    自适应计算标签阈值alpha（分位数法）
+    
+    原理: 取 |future_return| 的第 percentile 分位数作为alpha
+    效果: percentile=33 → 约 33% 下跌、33% 平稳、33% 上涨
+    
+    参考: DeepLOB (Zhang et al., 2019) Section 6:
+          "The parameter α was chosen in conjunction with the future horizon
+           with the aim to have relatively balanced distribution of labels across classes."
+    
+    Args:
+        future_returns: 未来收益率数组
+        percentile: 分位数（33→三类均衡，50→neutral占约50%）
+    
+    Returns:
+        alpha: 自适应阈值
+    """
+    valid = future_returns[~np.isnan(future_returns)]
+    alpha = np.percentile(np.abs(valid), percentile)
+    return max(alpha, 1e-8)  # 防止alpha为0
+
+
+def relabel_from_returns(df: pd.DataFrame, horizon: int, alpha: float = None) -> Tuple[np.ndarray, float]:
+    """
+    从 future_return 列重新计算标签（无需重新连接数据库）
+    
+    Args:
+        df: 包含 future_return_{horizon} 列的 DataFrame
+        horizon: 预测步长（分钟）
+        alpha: 指定alpha值；None则自动计算
+    
+    Returns:
+        labels: 标签数组 {-1, 0, +1}
+        alpha_used: 实际使用的alpha值
+    """
+    return_col = f'future_return_{horizon}'
+    if return_col not in df.columns:
+        raise ValueError(f"列 {return_col} 不存在，无法重新计算标签")
+    
+    returns = df[return_col].values
+    
+    if alpha is None:
+        if LABEL_ALPHA_MODE == 'adaptive':
+            alpha = compute_adaptive_alpha(returns, LABEL_PERCENTILE)
+        else:
+            alpha = LABEL_ALPHA_FIXED
+    
+    labels = np.zeros(len(returns), dtype=np.float32)
+    labels[returns > alpha] = 1
+    labels[returns < -alpha] = -1
+    
+    # 统计
+    valid = ~np.isnan(returns)
+    n_valid = valid.sum()
+    n_up = (labels == 1).sum()
+    n_down = (labels == -1).sum()
+    n_neutral = (labels == 0).sum()
+    
+    print(f"  [RELABEL] alpha={alpha:.6f} (mode={LABEL_ALPHA_MODE})")
+    print(f"    down={n_down/n_valid*100:.1f}%, neutral={n_neutral/n_valid*100:.1f}%, up={n_up/n_valid*100:.1f}%")
+    
+    return labels, alpha
 
 
 # ============================================================
@@ -452,11 +526,9 @@ class KlineDatasetBuilder:
         feature_cols = [c for c in self.feature_cols if c in df.columns]
         features = df[feature_cols].values.astype(np.float32)
         
-        label_col = f'label_{self.horizon_minutes}'
-        if label_col not in df.columns:
-            print(f"  [ERROR] 标签列不存在: {label_col}")
-            return None
-        labels = df[label_col].values
+        # 从 future_return 重新计算标签（自适应alpha）
+        labels, alpha_used = relabel_from_returns(df, self.horizon_minutes)
+        self.alpha_used = alpha_used
         
         print(f"[2/4] 生成序列...")
         generator = KlineSequenceGenerator(seq_len, horizon_steps)
@@ -480,6 +552,8 @@ class KlineDatasetBuilder:
             'train_size': len(X_train_scaled),
             'val_size': len(X_val_scaled),
             'test_size': len(X_test_scaled),
+            'label_alpha': self.alpha_used,
+            'label_alpha_mode': LABEL_ALPHA_MODE,
         }
         
         # 保存为原始数组格式（便于其他脚本加载）
@@ -514,7 +588,8 @@ class KlineDatasetBuilder:
         scale_features = {}
         min_len = float('inf')
         
-        for ktype in ['1M', '5M', '60M', 'DAY']:
+        # 多尺度仅使用1M/5M/60M三个尺度（去掉DAY，因日K样本量不足）
+        for ktype in ['1M', '5M', '60M']:
             df = self.load_features(code, ktype)
             if df is None:
                 print(f"  [SKIP] {ktype} 数据缺失")
@@ -531,8 +606,9 @@ class KlineDatasetBuilder:
             generator = KlineSequenceGenerator(seq_len, horizon_steps)
             
             features = df[feature_cols].values.astype(np.float32)
-            label_col = f'label_{self.horizon_minutes}'
-            labels = df[label_col].values if label_col in df.columns else np.zeros(len(df), dtype=np.float32)
+            # 从 future_return 重新计算标签（自适应alpha）
+            labels, alpha_used = relabel_from_returns(df, self.horizon_minutes)
+            self.alpha_used = alpha_used
             
             # NaN处理：用0填充
             nan_count = np.isnan(features).sum()

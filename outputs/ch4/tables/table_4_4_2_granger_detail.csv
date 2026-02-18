@@ -1,0 +1,631 @@
+﻿stock,feature,feature_cn,horizon_min,F_statistic,p_value,significant_005,significant_001
+HK.00700,kline_position,K线形态,5,372.2253,0.0,True,True
+HK.00700,kline_position,K线形态,15,533.2084,0.0,True,True
+HK.00700,kline_position,K线形态,30,638.271,0.0,True,True
+HK.00700,range_pct,日内波幅,5,3.244,0.006251,True,True
+HK.00700,range_pct,日内波幅,15,5.6934,0.017034,True,False
+HK.00700,range_pct,日内波幅,30,4.9741,0.025735,True,False
+HK.00700,return_1,1分钟收益率,5,918.634,0.0,True,True
+HK.00700,return_1,1分钟收益率,15,461.89,0.0,True,True
+HK.00700,return_1,1分钟收益率,30,532.1696,0.0,True,True
+HK.00700,return_5,5分钟收益率,5,1631.462,0.0,True,True
+HK.00700,return_5,5分钟收益率,15,30.5956,0.0,True,True
+HK.00700,return_5,5分钟收益率,30,198.8956,0.0,True,True
+HK.00700,return_20,20分钟收益率,5,704.497,0.0,True,True
+HK.00700,return_20,20分钟收益率,15,17.9878,0.0,True,True
+HK.00700,return_20,20分钟收益率,30,81.1029,0.0,True,True
+HK.00700,return_60,60分钟收益率,5,630.4242,0.0,True,True
+HK.00700,return_60,60分钟收益率,15,14.1033,0.0,True,True
+HK.00700,return_60,60分钟收益率,30,34.0077,0.0,True,True
+HK.00700,return_zscore,收益率Z-score,5,781.1203,0.0,True,True
+HK.00700,return_zscore,收益率Z-score,15,361.9846,0.0,True,True
+HK.00700,return_zscore,收益率Z-score,30,448.6978,0.0,True,True
+HK.00700,atr_pct,ATR百分比,5,2.2637,0.045439,True,False
+HK.00700,atr_pct,ATR百分比,15,4.4988,0.011128,True,False
+HK.00700,atr_pct,ATR百分比,30,3.177,0.04172,True,False
+HK.00700,volatility_20,20期波动率,5,10.61,0.0,True,True
+HK.00700,volatility_20,20期波动率,15,5.3432,0.020809,True,False
+HK.00700,volatility_20,20期波动率,30,1.5562,0.183003,False,False
+HK.00700,ti,成交不平衡(TI),5,77.2979,0.0,True,True
+HK.00700,ti,成交不平衡(TI),15,118.4598,0.0,True,True
+HK.00700,ti,成交不平衡(TI),30,173.0902,0.0,True,True
+HK.00700,ti_5,5期累积TI,5,51.1464,0.0,True,True
+HK.00700,ti_5,5期累积TI,15,33.8834,0.0,True,True
+HK.00700,ti_5,5期累积TI,30,42.4537,0.0,True,True
+HK.00700,ti_60,60期累积TI,5,33.7916,0.0,True,True
+HK.00700,ti_60,60期累积TI,15,7.2067,1e-06,True,True
+HK.00700,ti_60,60期累积TI,30,12.2237,5e-06,True,True
+HK.00700,ti_zscore,TI Z-score,5,293.5993,0.0,True,True
+HK.00700,ti_zscore,TI Z-score,15,309.48,0.0,True,True
+HK.00700,ti_zscore,TI Z-score,30,383.4723,0.0,True,True
+HK.00700,relative_volume,相对成交量,5,8.4767,0.0,True,True
+HK.00700,relative_volume,相对成交量,15,26.3168,0.0,True,True
+HK.00700,relative_volume,相对成交量,30,32.4014,0.0,True,True
+HK.00700,volume_change,成交量变化,5,11.7649,8e-06,True,True
+HK.00700,volume_change,成交量变化,15,27.2083,0.0,True,True
+HK.00700,volume_change,成交量变化,30,45.6483,0.0,True,True
+HK.00700,pv_corr,量价相关性,5,50.8047,0.0,True,True
+HK.00700,pv_corr,量价相关性,15,0.5702,0.450167,False,False
+HK.00700,pv_corr,量价相关性,30,4.0062,0.04534,True,False
+HK.00700,rsi,RSI(14),5,448.2812,0.0,True,True
+HK.00700,rsi,RSI(14),15,15.0567,0.0,True,True
+HK.00700,rsi,RSI(14),30,85.844,0.0,True,True
+HK.00700,bb_position,布林带位置,5,412.6538,0.0,True,True
+HK.00700,bb_position,布林带位置,15,43.5589,0.0,True,True
+HK.00700,bb_position,布林带位置,30,262.368,0.0,True,True
+HK.00700,macd_dif,MACD DIF,5,546.5217,0.0,True,True
+HK.00700,macd_dif,MACD DIF,15,31.4932,0.0,True,True
+HK.00700,macd_dif,MACD DIF,30,12.1489,0.0,True,True
+HK.00700,macd_dea,MACD DEA,5,631.071,0.0,True,True
+HK.00700,macd_dea,MACD DEA,15,37.2438,0.0,True,True
+HK.00700,macd_dea,MACD DEA,30,12.528,0.0,True,True
+HK.00700,macd,MACD柱,5,544.9171,0.0,True,True
+HK.00700,macd,MACD柱,15,27.0217,0.0,True,True
+HK.00700,macd,MACD柱,30,37.3128,0.0,True,True
+HK.00005,kline_position,K线形态,5,242.8223,0.0,True,True
+HK.00005,kline_position,K线形态,15,814.3189,0.0,True,True
+HK.00005,kline_position,K线形态,30,919.0259,0.0,True,True
+HK.00005,range_pct,日内波幅,5,23.8606,0.0,True,True
+HK.00005,range_pct,日内波幅,15,18.5291,0.0,True,True
+HK.00005,range_pct,日内波幅,30,20.9127,0.0,True,True
+HK.00005,return_1,1分钟收益率,5,1043.0321,0.0,True,True
+HK.00005,return_1,1分钟收益率,15,205.2763,0.0,True,True
+HK.00005,return_1,1分钟收益率,30,250.1684,0.0,True,True
+HK.00005,return_5,5分钟收益率,5,404.9045,0.0,True,True
+HK.00005,return_5,5分钟收益率,15,35.0089,0.0,True,True
+HK.00005,return_5,5分钟收益率,30,115.865,0.0,True,True
+HK.00005,return_20,20分钟收益率,5,677.9387,0.0,True,True
+HK.00005,return_20,20分钟收益率,15,14.749,0.0,True,True
+HK.00005,return_20,20分钟收益率,30,18.2576,1.9e-05,True,True
+HK.00005,return_60,60分钟收益率,5,608.24,0.0,True,True
+HK.00005,return_60,60分钟收益率,15,11.9694,0.0,True,True
+HK.00005,return_60,60分钟收益率,30,4.4538,0.000466,True,True
+HK.00005,return_zscore,收益率Z-score,5,513.4133,0.0,True,True
+HK.00005,return_zscore,收益率Z-score,15,542.9165,0.0,True,True
+HK.00005,return_zscore,收益率Z-score,30,611.5414,0.0,True,True
+HK.00005,atr_pct,ATR百分比,5,7.602,4e-06,True,True
+HK.00005,atr_pct,ATR百分比,15,9.7626,0.0,True,True
+HK.00005,atr_pct,ATR百分比,30,7.6406,4e-06,True,True
+HK.00005,volatility_20,20期波动率,5,5.0952,0.000113,True,True
+HK.00005,volatility_20,20期波动率,15,2.5909,0.023825,True,False
+HK.00005,volatility_20,20期波动率,30,3.1886,0.01255,True,False
+HK.00005,ti,成交不平衡(TI),5,137.3759,0.0,True,True
+HK.00005,ti,成交不平衡(TI),15,18.8006,0.0,True,True
+HK.00005,ti,成交不平衡(TI),30,18.9928,0.0,True,True
+HK.00005,ti_5,5期累积TI,5,114.3406,0.0,True,True
+HK.00005,ti_5,5期累积TI,15,8.8213,0.0,True,True
+HK.00005,ti_5,5期累积TI,30,11.1816,0.0,True,True
+HK.00005,ti_60,60期累积TI,5,73.7776,0.0,True,True
+HK.00005,ti_60,60期累积TI,15,20.1794,0.0,True,True
+HK.00005,ti_60,60期累积TI,30,17.4618,0.0,True,True
+HK.00005,ti_zscore,TI Z-score,5,149.9788,0.0,True,True
+HK.00005,ti_zscore,TI Z-score,15,262.93,0.0,True,True
+HK.00005,ti_zscore,TI Z-score,30,292.6617,0.0,True,True
+HK.00005,relative_volume,相对成交量,5,4.1791,0.000849,True,True
+HK.00005,relative_volume,相对成交量,15,9.0749,0.000115,True,True
+HK.00005,relative_volume,相对成交量,30,9.3137,4e-06,True,True
+HK.00005,volume_change,成交量变化,5,0.1685,0.681408,False,False
+HK.00005,volume_change,成交量变化,15,0.1571,0.691856,False,False
+HK.00005,volume_change,成交量变化,30,6.9843,0.008226,True,True
+HK.00005,pv_corr,量价相关性,5,23.8667,0.0,True,True
+HK.00005,pv_corr,量价相关性,15,13.4065,2e-06,True,True
+HK.00005,pv_corr,量价相关性,30,16.7991,0.0,True,True
+HK.00005,rsi,RSI(14),5,251.4041,0.0,True,True
+HK.00005,rsi,RSI(14),15,37.0354,0.0,True,True
+HK.00005,rsi,RSI(14),30,137.5288,0.0,True,True
+HK.00005,bb_position,布林带位置,5,449.0991,0.0,True,True
+HK.00005,bb_position,布林带位置,15,110.8623,0.0,True,True
+HK.00005,bb_position,布林带位置,30,459.9446,0.0,True,True
+HK.00005,macd_dif,MACD DIF,5,627.6205,0.0,True,True
+HK.00005,macd_dif,MACD DIF,15,38.0532,0.0,True,True
+HK.00005,macd_dif,MACD DIF,30,10.0538,0.0,True,True
+HK.00005,macd_dea,MACD DEA,5,647.266,0.0,True,True
+HK.00005,macd_dea,MACD DEA,15,40.7229,0.0,True,True
+HK.00005,macd_dea,MACD DEA,30,11.0142,0.0,True,True
+HK.00005,macd,MACD柱,5,569.7953,0.0,True,True
+HK.00005,macd,MACD柱,15,36.1371,0.0,True,True
+HK.00005,macd,MACD柱,30,10.7544,0.0,True,True
+HK.09988,kline_position,K线形态,5,211.3924,0.0,True,True
+HK.09988,kline_position,K线形态,15,38.9929,0.0,True,True
+HK.09988,kline_position,K线形态,30,80.5928,0.0,True,True
+HK.09988,range_pct,日内波幅,5,21.6223,0.0,True,True
+HK.09988,range_pct,日内波幅,15,1.2838,0.267565,False,False
+HK.09988,range_pct,日内波幅,30,0.5305,0.588301,False,False
+HK.09988,return_1,1分钟收益率,5,594.5267,0.0,True,True
+HK.09988,return_1,1分钟收益率,15,60.582,0.0,True,True
+HK.09988,return_1,1分钟收益率,30,12.1484,0.0,True,True
+HK.09988,return_5,5分钟收益率,5,524.6172,0.0,True,True
+HK.09988,return_5,5分钟收益率,15,42.2067,0.0,True,True
+HK.09988,return_5,5分钟收益率,30,10.174,0.0,True,True
+HK.09988,return_20,20分钟收益率,5,612.2118,0.0,True,True
+HK.09988,return_20,20分钟收益率,15,19.7567,0.0,True,True
+HK.09988,return_20,20分钟收益率,30,3.2768,0.005836,True,True
+HK.09988,return_60,60分钟收益率,5,544.0366,0.0,True,True
+HK.09988,return_60,60分钟收益率,15,17.9765,0.0,True,True
+HK.09988,return_60,60分钟收益率,30,2.0745,0.065369,False,False
+HK.09988,return_zscore,收益率Z-score,5,301.2624,0.0,True,True
+HK.09988,return_zscore,收益率Z-score,15,35.8812,0.0,True,True
+HK.09988,return_zscore,收益率Z-score,30,28.2413,0.0,True,True
+HK.09988,atr_pct,ATR百分比,5,17.0615,0.0,True,True
+HK.09988,atr_pct,ATR百分比,15,0.0982,0.754062,False,False
+HK.09988,atr_pct,ATR百分比,30,0.1119,0.737955,False,False
+HK.09988,volatility_20,20期波动率,5,71.4301,0.0,True,True
+HK.09988,volatility_20,20期波动率,15,5.5455,4.1e-05,True,True
+HK.09988,volatility_20,20期波动率,30,27.5936,0.0,True,True
+HK.09988,ti,成交不平衡(TI),5,171.1549,0.0,True,True
+HK.09988,ti,成交不平衡(TI),15,60.2389,0.0,True,True
+HK.09988,ti,成交不平衡(TI),30,155.8697,0.0,True,True
+HK.09988,ti_5,5期累积TI,5,123.4811,0.0,True,True
+HK.09988,ti_5,5期累积TI,15,49.0553,0.0,True,True
+HK.09988,ti_5,5期累积TI,30,95.8639,0.0,True,True
+HK.09988,ti_60,60期累积TI,5,84.7031,0.0,True,True
+HK.09988,ti_60,60期累积TI,15,50.7545,0.0,True,True
+HK.09988,ti_60,60期累积TI,30,67.1346,0.0,True,True
+HK.09988,ti_zscore,TI Z-score,5,180.9141,0.0,True,True
+HK.09988,ti_zscore,TI Z-score,15,30.526,0.0,True,True
+HK.09988,ti_zscore,TI Z-score,30,51.8537,0.0,True,True
+HK.09988,relative_volume,相对成交量,5,9.7211,0.0,True,True
+HK.09988,relative_volume,相对成交量,15,37.9687,0.0,True,True
+HK.09988,relative_volume,相对成交量,30,49.2425,0.0,True,True
+HK.09988,volume_change,成交量变化,5,18.7137,1.5e-05,True,True
+HK.09988,volume_change,成交量变化,15,15.3554,8.9e-05,True,True
+HK.09988,volume_change,成交量变化,30,37.1159,0.0,True,True
+HK.09988,pv_corr,量价相关性,5,45.9062,0.0,True,True
+HK.09988,pv_corr,量价相关性,15,16.0156,0.0,True,True
+HK.09988,pv_corr,量价相关性,30,13.0674,2e-06,True,True
+HK.09988,rsi,RSI(14),5,277.1635,0.0,True,True
+HK.09988,rsi,RSI(14),15,27.346,0.0,True,True
+HK.09988,rsi,RSI(14),30,16.4846,0.0,True,True
+HK.09988,bb_position,布林带位置,5,461.3638,0.0,True,True
+HK.09988,bb_position,布林带位置,15,44.1209,0.0,True,True
+HK.09988,bb_position,布林带位置,30,33.4834,0.0,True,True
+HK.09988,macd_dif,MACD DIF,5,735.8954,0.0,True,True
+HK.09988,macd_dif,MACD DIF,15,44.6886,0.0,True,True
+HK.09988,macd_dif,MACD DIF,30,10.8384,0.0,True,True
+HK.09988,macd_dea,MACD DEA,5,848.0807,0.0,True,True
+HK.09988,macd_dea,MACD DEA,15,48.4401,0.0,True,True
+HK.09988,macd_dea,MACD DEA,30,11.8069,0.0,True,True
+HK.09988,macd,MACD柱,5,685.0061,0.0,True,True
+HK.09988,macd,MACD柱,15,38.7144,0.0,True,True
+HK.09988,macd,MACD柱,30,9.0417,0.0,True,True
+HK.01810,kline_position,K线形态,5,319.0273,0.0,True,True
+HK.01810,kline_position,K线形态,15,168.0131,0.0,True,True
+HK.01810,kline_position,K线形态,30,184.0293,0.0,True,True
+HK.01810,range_pct,日内波幅,5,6.7377,3e-06,True,True
+HK.01810,range_pct,日内波幅,15,0.4813,0.749543,False,False
+HK.01810,range_pct,日内波幅,30,8.0167,0.00033,True,True
+HK.01810,return_1,1分钟收益率,5,1050.0477,0.0,True,True
+HK.01810,return_1,1分钟收益率,15,55.1015,0.0,True,True
+HK.01810,return_1,1分钟收益率,30,185.7723,0.0,True,True
+HK.01810,return_5,5分钟收益率,5,386.142,0.0,True,True
+HK.01810,return_5,5分钟收益率,15,39.5559,0.0,True,True
+HK.01810,return_5,5分钟收益率,30,111.628,0.0,True,True
+HK.01810,return_20,20分钟收益率,5,679.5957,0.0,True,True
+HK.01810,return_20,20分钟收益率,15,20.5064,0.0,True,True
+HK.01810,return_20,20分钟收益率,30,38.6979,0.0,True,True
+HK.01810,return_60,60分钟收益率,5,639.2362,0.0,True,True
+HK.01810,return_60,60分钟收益率,15,20.0488,0.0,True,True
+HK.01810,return_60,60分钟收益率,30,4.6856,0.00028,True,True
+HK.01810,return_zscore,收益率Z-score,5,537.5727,0.0,True,True
+HK.01810,return_zscore,收益率Z-score,15,112.2919,0.0,True,True
+HK.01810,return_zscore,收益率Z-score,30,105.1559,0.0,True,True
+HK.01810,atr_pct,ATR百分比,5,7.7427,3.6e-05,True,True
+HK.01810,atr_pct,ATR百分比,15,1.615,0.167351,False,False
+HK.01810,atr_pct,ATR百分比,30,5.9023,0.000506,True,True
+HK.01810,volatility_20,20期波动率,5,7.5322,0.0,True,True
+HK.01810,volatility_20,20期波动率,15,0.72,0.396162,False,False
+HK.01810,volatility_20,20期波动率,30,3.5917,0.003003,True,True
+HK.01810,ti,成交不平衡(TI),5,190.681,0.0,True,True
+HK.01810,ti,成交不平衡(TI),15,9.6646,0.0,True,True
+HK.01810,ti,成交不平衡(TI),30,22.6442,0.0,True,True
+HK.01810,ti_5,5期累积TI,5,140.9316,0.0,True,True
+HK.01810,ti_5,5期累积TI,15,4.8028,0.000216,True,True
+HK.01810,ti_5,5期累积TI,30,9.4045,3e-06,True,True
+HK.01810,ti_60,60期累积TI,5,80.3275,0.0,True,True
+HK.01810,ti_60,60期累积TI,15,4.7226,0.000258,True,True
+HK.01810,ti_60,60期累积TI,30,3.6375,0.002724,True,True
+HK.01810,ti_zscore,TI Z-score,5,261.4019,0.0,True,True
+HK.01810,ti_zscore,TI Z-score,15,62.8087,0.0,True,True
+HK.01810,ti_zscore,TI Z-score,30,74.9444,0.0,True,True
+HK.01810,relative_volume,相对成交量,5,7.9043,2.9e-05,True,True
+HK.01810,relative_volume,相对成交量,15,7.8238,0.000401,True,True
+HK.01810,relative_volume,相对成交量,30,8.6434,1e-05,True,True
+HK.01810,volume_change,成交量变化,5,10.759,2.1e-05,True,True
+HK.01810,volume_change,成交量变化,15,4.3409,0.013031,True,False
+HK.01810,volume_change,成交量变化,30,8.9401,0.000131,True,True
+HK.01810,pv_corr,量价相关性,5,43.9196,0.0,True,True
+HK.01810,pv_corr,量价相关性,15,3.3434,0.01832,True,False
+HK.01810,pv_corr,量价相关性,30,2.0428,0.129674,False,False
+HK.01810,rsi,RSI(14),5,367.2323,0.0,True,True
+HK.01810,rsi,RSI(14),15,16.7411,0.0,True,True
+HK.01810,rsi,RSI(14),30,52.6468,0.0,True,True
+HK.01810,bb_position,布林带位置,5,841.2181,0.0,True,True
+HK.01810,bb_position,布林带位置,15,27.9443,0.0,True,True
+HK.01810,bb_position,布林带位置,30,99.1966,0.0,True,True
+HK.01810,macd_dif,MACD DIF,5,536.4623,0.0,True,True
+HK.01810,macd_dif,MACD DIF,15,50.5795,0.0,True,True
+HK.01810,macd_dif,MACD DIF,30,17.6699,0.0,True,True
+HK.01810,macd_dea,MACD DEA,5,618.199,0.0,True,True
+HK.01810,macd_dea,MACD DEA,15,51.7325,0.0,True,True
+HK.01810,macd_dea,MACD DEA,30,17.4621,0.0,True,True
+HK.01810,macd,MACD柱,5,493.4754,0.0,True,True
+HK.01810,macd,MACD柱,15,40.2186,0.0,True,True
+HK.01810,macd,MACD柱,30,14.9359,0.0,True,True
+HK.00939,kline_position,K线形态,5,353.9332,0.0,True,True
+HK.00939,kline_position,K线形态,15,1544.4035,0.0,True,True
+HK.00939,kline_position,K线形态,30,1740.9503,0.0,True,True
+HK.00939,range_pct,日内波幅,5,0.7928,0.373251,False,False
+HK.00939,range_pct,日内波幅,15,0.9699,0.434512,False,False
+HK.00939,range_pct,日内波幅,30,1.5848,0.208076,False,False
+HK.00939,return_1,1分钟收益率,5,490.8424,0.0,True,True
+HK.00939,return_1,1分钟收益率,15,1303.581,0.0,True,True
+HK.00939,return_1,1分钟收益率,30,1387.7763,0.0,True,True
+HK.00939,return_5,5分钟收益率,5,1441.707,0.0,True,True
+HK.00939,return_5,5分钟收益率,15,478.0687,0.0,True,True
+HK.00939,return_5,5分钟收益率,30,528.8563,0.0,True,True
+HK.00939,return_20,20分钟收益率,5,775.3495,0.0,True,True
+HK.00939,return_20,20分钟收益率,15,141.9299,0.0,True,True
+HK.00939,return_20,20分钟收益率,30,166.2253,0.0,True,True
+HK.00939,return_60,60分钟收益率,5,738.7406,0.0,True,True
+HK.00939,return_60,60分钟收益率,15,48.8461,0.0,True,True
+HK.00939,return_60,60分钟收益率,30,66.8931,0.0,True,True
+HK.00939,return_zscore,收益率Z-score,5,1227.4271,0.0,True,True
+HK.00939,return_zscore,收益率Z-score,15,1308.5531,0.0,True,True
+HK.00939,return_zscore,收益率Z-score,30,1357.2245,0.0,True,True
+HK.00939,atr_pct,ATR百分比,5,3.9914,0.001275,True,True
+HK.00939,atr_pct,ATR百分比,15,7.3455,0.006726,True,True
+HK.00939,atr_pct,ATR百分比,30,4.2614,0.038995,True,False
+HK.00939,volatility_20,20期波动率,5,3.0741,0.0089,True,True
+HK.00939,volatility_20,20期波动率,15,7.9844,0.00472,True,True
+HK.00939,volatility_20,20期波动率,30,13.0999,0.000296,True,True
+HK.00939,ti,成交不平衡(TI),5,28.5441,0.0,True,True
+HK.00939,ti,成交不平衡(TI),15,39.5322,0.0,True,True
+HK.00939,ti,成交不平衡(TI),30,41.3656,0.0,True,True
+HK.00939,ti_5,5期累积TI,5,22.4656,0.0,True,True
+HK.00939,ti_5,5期累积TI,15,3.2079,0.022063,True,False
+HK.00939,ti_5,5期累积TI,30,4.9022,0.000598,True,True
+HK.00939,ti_60,60期累积TI,5,12.316,0.0,True,True
+HK.00939,ti_60,60期累积TI,15,5.4733,0.019314,True,False
+HK.00939,ti_60,60期累积TI,30,2.7461,0.097501,False,False
+HK.00939,ti_zscore,TI Z-score,5,250.7787,0.0,True,True
+HK.00939,ti_zscore,TI Z-score,15,579.7403,0.0,True,True
+HK.00939,ti_zscore,TI Z-score,30,648.5661,0.0,True,True
+HK.00939,relative_volume,相对成交量,5,10.6997,2.3e-05,True,True
+HK.00939,relative_volume,相对成交量,15,10.2067,3.7e-05,True,True
+HK.00939,relative_volume,相对成交量,30,5.6415,0.000734,True,True
+HK.00939,volume_change,成交量变化,5,2.8498,0.057865,False,False
+HK.00939,volume_change,成交量变化,15,11.6847,0.000631,True,True
+HK.00939,volume_change,成交量变化,30,2.249,0.13371,False,False
+HK.00939,pv_corr,量价相关性,5,31.7134,0.0,True,True
+HK.00939,pv_corr,量价相关性,15,9.3311,4e-06,True,True
+HK.00939,pv_corr,量价相关性,30,11.6058,0.0,True,True
+HK.00939,rsi,RSI(14),5,414.9066,0.0,True,True
+HK.00939,rsi,RSI(14),15,268.6827,0.0,True,True
+HK.00939,rsi,RSI(14),30,285.942,0.0,True,True
+HK.00939,bb_position,布林带位置,5,1706.6888,0.0,True,True
+HK.00939,bb_position,布林带位置,15,942.3489,0.0,True,True
+HK.00939,bb_position,布林带位置,30,997.7521,0.0,True,True
+HK.00939,macd_dif,MACD DIF,5,1385.4416,0.0,True,True
+HK.00939,macd_dif,MACD DIF,15,34.4897,0.0,True,True
+HK.00939,macd_dif,MACD DIF,30,60.8378,0.0,True,True
+HK.00939,macd_dea,MACD DEA,5,1913.464,0.0,True,True
+HK.00939,macd_dea,MACD DEA,15,35.3556,0.0,True,True
+HK.00939,macd_dea,MACD DEA,30,21.5221,0.0,True,True
+HK.00939,macd,MACD柱,5,1462.3508,0.0,True,True
+HK.00939,macd,MACD柱,15,76.1931,0.0,True,True
+HK.00939,macd,MACD柱,30,123.9804,0.0,True,True
+HK.01299,kline_position,K线形态,5,204.4055,0.0,True,True
+HK.01299,kline_position,K线形态,15,202.5485,0.0,True,True
+HK.01299,kline_position,K线形态,30,202.8551,0.0,True,True
+HK.01299,range_pct,日内波幅,5,5.1522,0.0001,True,True
+HK.01299,range_pct,日内波幅,15,3.0875,0.078904,False,False
+HK.01299,range_pct,日内波幅,30,3.4795,0.030833,True,False
+HK.01299,return_1,1分钟收益率,5,551.4914,0.0,True,True
+HK.01299,return_1,1分钟收益率,15,52.6049,0.0,True,True
+HK.01299,return_1,1分钟收益率,30,81.189,0.0,True,True
+HK.01299,return_5,5分钟收益率,5,501.939,0.0,True,True
+HK.01299,return_5,5分钟收益率,15,38.4994,0.0,True,True
+HK.01299,return_5,5分钟收益率,30,44.4775,0.0,True,True
+HK.01299,return_20,20分钟收益率,5,631.2986,0.0,True,True
+HK.01299,return_20,20分钟收益率,15,24.2831,0.0,True,True
+HK.01299,return_20,20分钟收益率,30,12.2452,0.000467,True,True
+HK.01299,return_60,60分钟收益率,5,588.4356,0.0,True,True
+HK.01299,return_60,60分钟收益率,15,22.2157,0.0,True,True
+HK.01299,return_60,60分钟收益率,30,3.1322,0.007889,True,True
+HK.01299,return_zscore,收益率Z-score,5,404.4586,0.0,True,True
+HK.01299,return_zscore,收益率Z-score,15,25.5137,0.0,True,True
+HK.01299,return_zscore,收益率Z-score,30,94.9953,0.0,True,True
+HK.01299,atr_pct,ATR百分比,5,2.4445,0.031882,True,False
+HK.01299,atr_pct,ATR百分比,15,3.3306,0.035782,True,False
+HK.01299,atr_pct,ATR百分比,30,2.2132,0.109365,False,False
+HK.01299,volatility_20,20期波动率,5,4.8001,0.000218,True,True
+HK.01299,volatility_20,20期波动率,15,0.4662,0.494749,False,False
+HK.01299,volatility_20,20期波动率,30,2.45,0.117533,False,False
+HK.01299,ti,成交不平衡(TI),5,63.2781,0.0,True,True
+HK.01299,ti,成交不平衡(TI),15,3.0674,0.009024,True,True
+HK.01299,ti,成交不平衡(TI),30,3.8458,0.001745,True,True
+HK.01299,ti_5,5期累积TI,5,57.9291,0.0,True,True
+HK.01299,ti_5,5期累积TI,15,3.9097,0.001521,True,True
+HK.01299,ti_5,5期累积TI,30,3.6835,0.005292,True,True
+HK.01299,ti_60,60期累积TI,5,33.8761,0.0,True,True
+HK.01299,ti_60,60期累积TI,15,2.4112,0.034047,True,False
+HK.01299,ti_60,60期累积TI,30,3.0001,0.049793,True,False
+HK.01299,ti_zscore,TI Z-score,5,146.0121,0.0,True,True
+HK.01299,ti_zscore,TI Z-score,15,15.9446,0.0,True,True
+HK.01299,ti_zscore,TI Z-score,30,43.3169,0.0,True,True
+HK.01299,relative_volume,相对成交量,5,2.806,0.015433,True,False
+HK.01299,relative_volume,相对成交量,15,5.1613,0.001448,True,True
+HK.01299,relative_volume,相对成交量,30,3.5619,0.006551,True,True
+HK.01299,volume_change,成交量变化,5,0.8633,0.504818,False,False
+HK.01299,volume_change,成交量变化,15,1.8762,0.170774,False,False
+HK.01299,volume_change,成交量变化,30,5.4334,0.01976,True,False
+HK.01299,pv_corr,量价相关性,5,41.1634,0.0,True,True
+HK.01299,pv_corr,量价相关性,15,4.1951,0.000821,True,True
+HK.01299,pv_corr,量价相关性,30,6.3569,0.001736,True,True
+HK.01299,rsi,RSI(14),5,259.0556,0.0,True,True
+HK.01299,rsi,RSI(14),15,16.3917,0.0,True,True
+HK.01299,rsi,RSI(14),30,17.6324,2.7e-05,True,True
+HK.01299,bb_position,布林带位置,5,623.3202,0.0,True,True
+HK.01299,bb_position,布林带位置,15,34.6618,0.0,True,True
+HK.01299,bb_position,布林带位置,30,53.0165,0.0,True,True
+HK.01299,macd_dif,MACD DIF,5,706.4264,0.0,True,True
+HK.01299,macd_dif,MACD DIF,15,40.5548,0.0,True,True
+HK.01299,macd_dif,MACD DIF,30,7.293,1e-06,True,True
+HK.01299,macd_dea,MACD DEA,5,765.8728,0.0,True,True
+HK.01299,macd_dea,MACD DEA,15,43.4326,0.0,True,True
+HK.01299,macd_dea,MACD DEA,30,8.2432,0.0,True,True
+HK.01299,macd,MACD柱,5,675.6258,0.0,True,True
+HK.01299,macd,MACD柱,15,36.3607,0.0,True,True
+HK.01299,macd,MACD柱,30,6.8633,2e-06,True,True
+HK.00941,kline_position,K线形态,5,355.4471,0.0,True,True
+HK.00941,kline_position,K线形态,15,1001.7853,0.0,True,True
+HK.00941,kline_position,K线形态,30,1091.019,0.0,True,True
+HK.00941,range_pct,日内波幅,5,3.2971,0.005593,True,True
+HK.00941,range_pct,日内波幅,15,1.41,0.237692,False,False
+HK.00941,range_pct,日内波幅,30,2.4847,0.058765,False,False
+HK.00941,return_1,1分钟收益率,5,723.4343,0.0,True,True
+HK.00941,return_1,1分钟收益率,15,791.5273,0.0,True,True
+HK.00941,return_1,1分钟收益率,30,864.5478,0.0,True,True
+HK.00941,return_5,5分钟收益率,5,1513.8706,0.0,True,True
+HK.00941,return_5,5分钟收益率,15,300.7589,0.0,True,True
+HK.00941,return_5,5分钟收益率,30,325.3865,0.0,True,True
+HK.00941,return_20,20分钟收益率,5,755.8551,0.0,True,True
+HK.00941,return_20,20分钟收益率,15,62.9167,0.0,True,True
+HK.00941,return_20,20分钟收益率,30,75.879,0.0,True,True
+HK.00941,return_60,60分钟收益率,5,680.552,0.0,True,True
+HK.00941,return_60,60分钟收益率,15,15.914,0.0,True,True
+HK.00941,return_60,60分钟收益率,30,21.9101,3e-06,True,True
+HK.00941,return_zscore,收益率Z-score,5,991.4983,0.0,True,True
+HK.00941,return_zscore,收益率Z-score,15,827.9591,0.0,True,True
+HK.00941,return_zscore,收益率Z-score,30,875.9216,0.0,True,True
+HK.00941,atr_pct,ATR百分比,5,1.5338,0.175474,False,False
+HK.00941,atr_pct,ATR百分比,15,1.6384,0.161463,False,False
+HK.00941,atr_pct,ATR百分比,30,1.9925,0.0927,False,False
+HK.00941,volatility_20,20期波动率,5,0.9556,0.328301,False,False
+HK.00941,volatility_20,20期波动率,15,1.6016,0.186685,False,False
+HK.00941,volatility_20,20期波动率,30,2.8214,0.037347,True,False
+HK.00941,ti,成交不平衡(TI),5,305.4179,0.0,True,True
+HK.00941,ti,成交不平衡(TI),15,178.1151,0.0,True,True
+HK.00941,ti,成交不平衡(TI),30,196.8446,0.0,True,True
+HK.00941,ti_5,5期累积TI,5,204.2666,0.0,True,True
+HK.00941,ti_5,5期累积TI,15,70.2628,0.0,True,True
+HK.00941,ti_5,5期累积TI,30,73.2577,0.0,True,True
+HK.00941,ti_60,60期累积TI,5,120.9934,0.0,True,True
+HK.00941,ti_60,60期累积TI,15,3.0923,0.008571,True,True
+HK.00941,ti_60,60期累积TI,30,1.1763,0.27811,False,False
+HK.00941,ti_zscore,TI Z-score,5,271.2997,0.0,True,True
+HK.00941,ti_zscore,TI Z-score,15,492.7412,0.0,True,True
+HK.00941,ti_zscore,TI Z-score,30,523.6114,0.0,True,True
+HK.00941,relative_volume,相对成交量,5,10.5436,0.001167,True,True
+HK.00941,relative_volume,相对成交量,15,5.9042,1.8e-05,True,True
+HK.00941,relative_volume,相对成交量,30,5.1227,0.00153,True,True
+HK.00941,volume_change,成交量变化,5,2.2298,0.107568,False,False
+HK.00941,volume_change,成交量变化,15,1.8696,0.171531,False,False
+HK.00941,volume_change,成交量变化,30,1.9684,0.160626,False,False
+HK.00941,pv_corr,量价相关性,5,48.4888,0.0,True,True
+HK.00941,pv_corr,量价相关性,15,7.5219,0.000542,True,True
+HK.00941,pv_corr,量价相关性,30,7.8988,2.9e-05,True,True
+HK.00941,rsi,RSI(14),5,428.3839,0.0,True,True
+HK.00941,rsi,RSI(14),15,152.7268,0.0,True,True
+HK.00941,rsi,RSI(14),30,179.7877,0.0,True,True
+HK.00941,bb_position,布林带位置,5,426.6595,0.0,True,True
+HK.00941,bb_position,布林带位置,15,575.1124,0.0,True,True
+HK.00941,bb_position,布林带位置,30,618.6314,0.0,True,True
+HK.00941,macd_dif,MACD DIF,5,434.5933,0.0,True,True
+HK.00941,macd_dif,MACD DIF,15,33.3047,0.0,True,True
+HK.00941,macd_dif,MACD DIF,30,36.806,0.0,True,True
+HK.00941,macd_dea,MACD DEA,5,504.565,0.0,True,True
+HK.00941,macd_dea,MACD DEA,15,35.8368,0.0,True,True
+HK.00941,macd_dea,MACD DEA,30,10.796,0.0,True,True
+HK.00941,macd,MACD柱,5,443.3565,0.0,True,True
+HK.00941,macd,MACD柱,15,33.6472,0.0,True,True
+HK.00941,macd,MACD柱,30,77.6499,0.0,True,True
+HK.03690,kline_position,K线形态,5,251.1485,0.0,True,True
+HK.03690,kline_position,K线形态,15,212.8704,0.0,True,True
+HK.03690,kline_position,K线形态,30,254.4248,0.0,True,True
+HK.03690,range_pct,日内波幅,5,8.5136,1.2e-05,True,True
+HK.03690,range_pct,日内波幅,15,7.6885,3.9e-05,True,True
+HK.03690,range_pct,日内波幅,30,6.8695,0.00104,True,True
+HK.03690,return_1,1分钟收益率,5,1128.746,0.0,True,True
+HK.03690,return_1,1分钟收益率,15,53.6095,0.0,True,True
+HK.03690,return_1,1分钟收益率,30,184.3901,0.0,True,True
+HK.03690,return_5,5分钟收益率,5,446.5379,0.0,True,True
+HK.03690,return_5,5分钟收益率,15,36.6127,0.0,True,True
+HK.03690,return_5,5分钟收益率,30,73.9615,0.0,True,True
+HK.03690,return_20,20分钟收益率,5,654.3596,0.0,True,True
+HK.03690,return_20,20分钟收益率,15,15.4862,0.0,True,True
+HK.03690,return_20,20分钟收益率,30,25.7379,0.0,True,True
+HK.03690,return_60,60分钟收益率,5,620.8453,0.0,True,True
+HK.03690,return_60,60分钟收益率,15,11.5087,0.0,True,True
+HK.03690,return_60,60分钟收益率,30,4.3118,0.037855,True,False
+HK.03690,return_zscore,收益率Z-score,5,482.9561,0.0,True,True
+HK.03690,return_zscore,收益率Z-score,15,129.0635,0.0,True,True
+HK.03690,return_zscore,收益率Z-score,30,152.1442,0.0,True,True
+HK.03690,atr_pct,ATR百分比,5,7.0858,1e-06,True,True
+HK.03690,atr_pct,ATR百分比,15,6.6314,4e-06,True,True
+HK.03690,atr_pct,ATR百分比,30,4.6478,0.000305,True,True
+HK.03690,volatility_20,20期波动率,5,16.7357,0.0,True,True
+HK.03690,volatility_20,20期波动率,15,5.0473,0.000126,True,True
+HK.03690,volatility_20,20期波动率,30,10.494,0.0,True,True
+HK.03690,ti,成交不平衡(TI),5,113.0508,0.0,True,True
+HK.03690,ti,成交不平衡(TI),15,9.8481,0.0,True,True
+HK.03690,ti,成交不平衡(TI),30,5.4443,5.2e-05,True,True
+HK.03690,ti_5,5期累积TI,5,75.5228,0.0,True,True
+HK.03690,ti_5,5期累积TI,15,4.9226,0.000166,True,True
+HK.03690,ti_5,5期累积TI,30,4.7384,0.000249,True,True
+HK.03690,ti_60,60期累积TI,5,46.3671,0.0,True,True
+HK.03690,ti_60,60期累积TI,15,4.446,0.000475,True,True
+HK.03690,ti_60,60期累积TI,30,5.5452,0.003909,True,True
+HK.03690,ti_zscore,TI Z-score,5,215.5073,0.0,True,True
+HK.03690,ti_zscore,TI Z-score,15,93.1796,0.0,True,True
+HK.03690,ti_zscore,TI Z-score,30,124.7122,0.0,True,True
+HK.03690,relative_volume,相对成交量,5,2.3912,0.066585,False,False
+HK.03690,relative_volume,相对成交量,15,2.6835,0.019778,True,False
+HK.03690,relative_volume,相对成交量,30,5.6683,0.000706,True,True
+HK.03690,volume_change,成交量变化,5,1.3506,0.259087,False,False
+HK.03690,volume_change,成交量变化,15,1.5576,0.168326,False,False
+HK.03690,volume_change,成交量变化,30,3.4038,0.033255,True,False
+HK.03690,pv_corr,量价相关性,5,33.8383,0.0,True,True
+HK.03690,pv_corr,量价相关性,15,3.7752,0.010096,True,False
+HK.03690,pv_corr,量价相关性,30,4.8333,0.0023,True,True
+HK.03690,rsi,RSI(14),5,338.4259,0.0,True,True
+HK.03690,rsi,RSI(14),15,16.4398,0.0,True,True
+HK.03690,rsi,RSI(14),30,46.7397,0.0,True,True
+HK.03690,bb_position,布林带位置,5,699.7979,0.0,True,True
+HK.03690,bb_position,布林带位置,15,31.6384,0.0,True,True
+HK.03690,bb_position,布林带位置,30,120.5594,0.0,True,True
+HK.03690,macd_dif,MACD DIF,5,623.6483,0.0,True,True
+HK.03690,macd_dif,MACD DIF,15,39.2395,0.0,True,True
+HK.03690,macd_dif,MACD DIF,30,9.5038,7.5e-05,True,True
+HK.03690,macd_dea,MACD DEA,5,741.3217,0.0,True,True
+HK.03690,macd_dea,MACD DEA,15,42.0154,0.0,True,True
+HK.03690,macd_dea,MACD DEA,30,5.4378,5.3e-05,True,True
+HK.03690,macd,MACD柱,5,599.9974,0.0,True,True
+HK.03690,macd,MACD柱,15,33.9154,0.0,True,True
+HK.03690,macd,MACD柱,30,11.5978,9e-06,True,True
+HK.01211,kline_position,K线形态,5,221.2864,0.0,True,True
+HK.01211,kline_position,K线形态,15,208.3982,0.0,True,True
+HK.01211,kline_position,K线形态,30,238.8967,0.0,True,True
+HK.01211,range_pct,日内波幅,5,9.384,0.0,True,True
+HK.01211,range_pct,日内波幅,15,17.7687,0.0,True,True
+HK.01211,range_pct,日内波幅,30,9.2368,9.8e-05,True,True
+HK.01211,return_1,1分钟收益率,5,1061.4043,0.0,True,True
+HK.01211,return_1,1分钟收益率,15,269.9039,0.0,True,True
+HK.01211,return_1,1分钟收益率,30,267.0942,0.0,True,True
+HK.01211,return_5,5分钟收益率,5,420.1539,0.0,True,True
+HK.01211,return_5,5分钟收益率,15,30.1324,0.0,True,True
+HK.01211,return_5,5分钟收益率,30,101.8132,0.0,True,True
+HK.01211,return_20,20分钟收益率,5,700.5711,0.0,True,True
+HK.01211,return_20,20分钟收益率,15,21.0704,0.0,True,True
+HK.01211,return_20,20分钟收益率,30,37.5954,0.0,True,True
+HK.01211,return_60,60分钟收益率,5,589.3783,0.0,True,True
+HK.01211,return_60,60分钟收益率,15,15.1311,0.0,True,True
+HK.01211,return_60,60分钟收益率,30,12.1139,0.000501,True,True
+HK.01211,return_zscore,收益率Z-score,5,475.4629,0.0,True,True
+HK.01211,return_zscore,收益率Z-score,15,198.7041,0.0,True,True
+HK.01211,return_zscore,收益率Z-score,30,162.5304,0.0,True,True
+HK.01211,atr_pct,ATR百分比,5,6.9628,2e-06,True,True
+HK.01211,atr_pct,ATR百分比,15,3.928,0.008167,True,True
+HK.01211,atr_pct,ATR百分比,30,2.3425,0.03897,True,False
+HK.01211,volatility_20,20期波动率,5,22.2449,0.0,True,True
+HK.01211,volatility_20,20期波动率,15,3.8609,0.003869,True,True
+HK.01211,volatility_20,20期波动率,30,1.5169,0.194186,False,False
+HK.01211,ti,成交不平衡(TI),5,64.0323,0.0,True,True
+HK.01211,ti,成交不平衡(TI),15,124.4208,0.0,True,True
+HK.01211,ti,成交不平衡(TI),30,113.6208,0.0,True,True
+HK.01211,ti_5,5期累积TI,5,49.2392,0.0,True,True
+HK.01211,ti_5,5期累积TI,15,25.4994,0.0,True,True
+HK.01211,ti_5,5期累积TI,30,82.9047,0.0,True,True
+HK.01211,ti_60,60期累积TI,5,28.2411,0.0,True,True
+HK.01211,ti_60,60期累积TI,15,12.5242,0.0,True,True
+HK.01211,ti_60,60期累积TI,30,8.0295,0.0,True,True
+HK.01211,ti_zscore,TI Z-score,5,178.0219,0.0,True,True
+HK.01211,ti_zscore,TI Z-score,15,108.5059,0.0,True,True
+HK.01211,ti_zscore,TI Z-score,30,122.4181,0.0,True,True
+HK.01211,relative_volume,相对成交量,5,7.3656,6.2e-05,True,True
+HK.01211,relative_volume,相对成交量,15,6.763,0.000148,True,True
+HK.01211,relative_volume,相对成交量,30,9.9809,1e-06,True,True
+HK.01211,volume_change,成交量变化,5,2.0333,0.106875,False,False
+HK.01211,volume_change,成交量变化,15,2.4129,0.089569,False,False
+HK.01211,volume_change,成交量变化,30,1.0869,0.337266,False,False
+HK.01211,pv_corr,量价相关性,5,49.1641,0.0,True,True
+HK.01211,pv_corr,量价相关性,15,3.4169,0.016559,True,False
+HK.01211,pv_corr,量价相关性,30,3.9313,0.047402,True,False
+HK.01211,rsi,RSI(14),5,366.5645,0.0,True,True
+HK.01211,rsi,RSI(14),15,18.353,0.0,True,True
+HK.01211,rsi,RSI(14),30,41.8602,0.0,True,True
+HK.01211,bb_position,布林带位置,5,730.3543,0.0,True,True
+HK.01211,bb_position,布林带位置,15,30.2448,0.0,True,True
+HK.01211,bb_position,布林带位置,30,98.1348,0.0,True,True
+HK.01211,macd_dif,MACD DIF,5,601.579,0.0,True,True
+HK.01211,macd_dif,MACD DIF,15,40.1356,0.0,True,True
+HK.01211,macd_dif,MACD DIF,30,8.6336,0.0,True,True
+HK.01211,macd_dea,MACD DEA,5,699.9739,0.0,True,True
+HK.01211,macd_dea,MACD DEA,15,42.1413,0.0,True,True
+HK.01211,macd_dea,MACD DEA,30,9.1674,0.0,True,True
+HK.01211,macd,MACD柱,5,580.6126,0.0,True,True
+HK.01211,macd,MACD柱,15,34.5054,0.0,True,True
+HK.01211,macd,MACD柱,30,6.4508,5e-06,True,True
+HK.00388,kline_position,K线形态,5,233.012,0.0,True,True
+HK.00388,kline_position,K线形态,15,21.7534,0.0,True,True
+HK.00388,kline_position,K线形态,30,124.3446,0.0,True,True
+HK.00388,range_pct,日内波幅,5,2.8914,0.033965,True,False
+HK.00388,range_pct,日内波幅,15,2.6545,0.046785,True,False
+HK.00388,range_pct,日内波幅,30,6.8139,0.000138,True,True
+HK.00388,return_1,1分钟收益率,5,512.7796,0.0,True,True
+HK.00388,return_1,1分钟收益率,15,44.9642,0.0,True,True
+HK.00388,return_1,1分钟收益率,30,87.8891,0.0,True,True
+HK.00388,return_5,5分钟收益率,5,439.2351,0.0,True,True
+HK.00388,return_5,5分钟收益率,15,29.8117,0.0,True,True
+HK.00388,return_5,5分钟收益率,30,34.5584,0.0,True,True
+HK.00388,return_20,20分钟收益率,5,632.2253,0.0,True,True
+HK.00388,return_20,20分钟收益率,15,18.6396,0.0,True,True
+HK.00388,return_20,20分钟收益率,30,9.8804,0.001672,True,True
+HK.00388,return_60,60分钟收益率,5,561.9322,0.0,True,True
+HK.00388,return_60,60分钟收益率,15,13.3572,0.0,True,True
+HK.00388,return_60,60分钟收益率,30,4.9901,0.000143,True,True
+HK.00388,return_zscore,收益率Z-score,5,478.2334,0.0,True,True
+HK.00388,return_zscore,收益率Z-score,15,20.5071,0.0,True,True
+HK.00388,return_zscore,收益率Z-score,30,82.6328,0.0,True,True
+HK.00388,atr_pct,ATR百分比,5,1.0944,0.334755,False,False
+HK.00388,atr_pct,ATR百分比,15,2.6934,0.067666,False,False
+HK.00388,atr_pct,ATR百分比,30,5.5683,0.018293,True,False
+HK.00388,volatility_20,20期波动率,5,4.5385,0.003482,True,True
+HK.00388,volatility_20,20期波动率,15,5.2062,0.001359,True,True
+HK.00388,volatility_20,20期波动率,30,5.1921,0.001387,True,True
+HK.00388,ti,成交不平衡(TI),5,120.7802,0.0,True,True
+HK.00388,ti,成交不平衡(TI),15,20.0866,7e-06,True,True
+HK.00388,ti,成交不平衡(TI),30,25.9082,0.0,True,True
+HK.00388,ti_5,5期累积TI,5,93.7596,0.0,True,True
+HK.00388,ti_5,5期累积TI,15,8.2081,0.000273,True,True
+HK.00388,ti_5,5期累积TI,30,2.2044,0.050967,False,False
+HK.00388,ti_60,60期累积TI,5,64.4639,0.0,True,True
+HK.00388,ti_60,60期累积TI,15,4.6146,0.009911,True,True
+HK.00388,ti_60,60期累积TI,30,1.3188,0.252662,False,False
+HK.00388,ti_zscore,TI Z-score,5,176.6012,0.0,True,True
+HK.00388,ti_zscore,TI Z-score,15,11.068,0.0,True,True
+HK.00388,ti_zscore,TI Z-score,30,50.4122,0.0,True,True
+HK.00388,relative_volume,相对成交量,5,20.4299,6e-06,True,True
+HK.00388,relative_volume,相对成交量,15,13.2936,0.000267,True,True
+HK.00388,relative_volume,相对成交量,30,8.2179,0.00027,True,True
+HK.00388,volume_change,成交量变化,5,11.6637,0.000638,True,True
+HK.00388,volume_change,成交量变化,15,4.7996,0.008238,True,True
+HK.00388,volume_change,成交量变化,30,5.1298,0.005921,True,True
+HK.00388,pv_corr,量价相关性,5,34.6292,0.0,True,True
+HK.00388,pv_corr,量价相关性,15,0.6124,0.653718,False,False
+HK.00388,pv_corr,量价相关性,30,0.4766,0.489984,False,False
+HK.00388,rsi,RSI(14),5,336.1115,0.0,True,True
+HK.00388,rsi,RSI(14),15,14.086,0.0,True,True
+HK.00388,rsi,RSI(14),30,19.7025,9e-06,True,True
+HK.00388,bb_position,布林带位置,5,728.2495,0.0,True,True
+HK.00388,bb_position,布林带位置,15,26.9674,0.0,True,True
+HK.00388,bb_position,布林带位置,30,44.81,0.0,True,True
+HK.00388,macd_dif,MACD DIF,5,654.861,0.0,True,True
+HK.00388,macd_dif,MACD DIF,15,34.7417,0.0,True,True
+HK.00388,macd_dif,MACD DIF,30,9.233,0.0,True,True
+HK.00388,macd_dea,MACD DEA,5,742.9045,0.0,True,True
+HK.00388,macd_dea,MACD DEA,15,36.7496,0.0,True,True
+HK.00388,macd_dea,MACD DEA,30,10.2077,0.0,True,True
+HK.00388,macd,MACD柱,5,634.2697,0.0,True,True
+HK.00388,macd,MACD柱,15,30.9078,0.0,True,True
+HK.00388,macd,MACD柱,30,7.0509,1e-06,True,True

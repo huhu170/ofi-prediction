@@ -1,0 +1,2 @@
+﻿model,n_stocks,avg_return_pct,avg_max_dd_pct,long_trades,long_wins,long_winrate,short_trades,short_wins,short_winrate,total_trades,total_wins,total_winrate
+transformer,10,6.4,17.51,4431,1895,42.8,4197,2016,48.0,8628,3911,45.3

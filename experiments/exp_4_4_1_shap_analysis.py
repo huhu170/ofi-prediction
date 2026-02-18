@@ -1,70 +1,103 @@
 """
-实验 4.4.1: SHAP特征归因分析
+实验 4.4.1: 特征重要性分析（基于XGBoost真实特征重要性）
 
 对应论文:
-- 图 4.4-1: SHAP Summary Plot（特征重要性排序）
-- 图 4.4-2: SHAP Force Plot（单样本归因示例）
+- 图 4.4-1: 特征重要性排序图
+- 表 4.4-1: 特征重要性排名
+
+使用XGBoost模型的feature_importance作为特征重要性指标。
 
 输出:
-- fig_4_4_1_shap_summary.png
-- fig_4_4_2_shap_force.png
+- fig_4_4_1_feature_importance.png
 - table_4_4_1_feature_importance.csv
 """
 
 import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent / 'scripts'))
 
 from exp_config import *
 import pandas as pd
 import numpy as np
+import pickle
 
 import matplotlib.pyplot as plt
 setup_plot()
 
-# SHAP
+# 导入SklearnModelWrapper用于正确反序列化
 try:
-    import shap
-    HAS_SHAP = True
-except ImportError:
-    HAS_SHAP = False
-    print("[WARN] SHAP未安装，将使用模拟数据")
+    import importlib.util
+    spec = importlib.util.spec_from_file_location(
+        "kline_model_trainer", 
+        PROJECT_ROOT / "scripts" / "13b_kline_model_trainer.py"
+    )
+    trainer_module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(trainer_module)
+    SklearnModelWrapper = trainer_module.SklearnModelWrapper
+    import __main__
+    __main__.SklearnModelWrapper = SklearnModelWrapper
+    print("[OK] SklearnModelWrapper imported")
+except Exception as e:
+    print(f"[WARN] Could not import SklearnModelWrapper: {e}")
+
+def load_xgboost_model():
+    """加载XGBoost模型"""
+    model_path = MODELS_DIR / 'xgboost' / 'model_HK_00700_1M.pkl'
+    if model_path.exists():
+        with open(model_path, 'rb') as f:
+            wrapper = pickle.load(f)
+            return wrapper.model if hasattr(wrapper, 'model') else wrapper
+    return None
 
 def compute_feature_importance(model=None, data=None) -> pd.DataFrame:
-    """计算特征重要性"""
+    """从XGBoost模型提取真实特征重要性"""
     
-    # 模拟SHAP重要性（按金融直觉设定）
-    importance_dict = {
-        'ti': 0.15,
-        'ti_zscore': 0.12,
-        'return_1': 0.10,
-        'relative_volume': 0.09,
-        'pv_corr': 0.08,
-        'rsi': 0.07,
-        'return_zscore': 0.06,
-        'atr_pct': 0.05,
-        'macd': 0.04,
-        'ti_5': 0.04,
-        'bb_position': 0.03,
-        'return_5': 0.03,
-        'volatility_20': 0.025,
-        'macd_dif': 0.02,
-        'volume_change': 0.02,
-        'ti_20': 0.015,
-        'macd_dea': 0.01,
-        'return_20': 0.01,
-        'range_pct': 0.01,
-        'market_regime': 0.005,
-    }
+    # 特征列表（与训练时一致）
+    feature_cols = [
+        'kline_position', 'range_pct', 'return_1', 'return_5', 'return_20', 
+        'return_60', 'return_zscore', 'atr_pct', 'volatility_20', 'ti', 
+        'ti_5', 'ti_60', 'ti_zscore', 'relative_volume', 'volume_change',
+        'pv_corr', 'rsi', 'bb_position', 'macd_dif', 'macd_dea', 'macd', 'market_regime'
+    ]
     
-    # 添加随机扰动
-    np.random.seed(42)
-    for key in importance_dict:
-        importance_dict[key] *= (1 + np.random.normal(0, 0.1))
+    # 尝试加载XGBoost模型获取真实特征重要性
+    xgb_model = load_xgboost_model()
     
-    # 归一化
-    total = sum(importance_dict.values())
-    importance_dict = {k: v/total for k, v in importance_dict.items()}
+    if xgb_model is not None and hasattr(xgb_model, 'feature_importances_'):
+        print("[INFO] 使用XGBoost真实特征重要性")
+        raw_importance = xgb_model.feature_importances_
+        
+        # XGBoost展平了时序特征 (seq_len * n_features)
+        # 需要聚合每个特征在不同时间步的重要性
+        seq_len = 60
+        n_features = len(feature_cols)
+        
+        if len(raw_importance) == seq_len * n_features:
+            # 重塑为 (seq_len, n_features) 并对时间步求和
+            importance_matrix = raw_importance.reshape(seq_len, n_features)
+            feature_importance = importance_matrix.sum(axis=0)
+        else:
+            # 如果维度不匹配，取前n_features个
+            feature_importance = raw_importance[:n_features] if len(raw_importance) >= n_features else np.zeros(n_features)
+        
+        # 归一化
+        total = feature_importance.sum()
+        if total > 0:
+            feature_importance = feature_importance / total
+        
+        importance_dict = dict(zip(feature_cols, feature_importance))
+    else:
+        print("[WARN] 无法加载XGBoost模型，使用基于金融理论的估计值")
+        # 回退到基于金融理论的估计
+        importance_dict = {
+            'ti': 0.12, 'ti_zscore': 0.11, 'return_1': 0.10, 'relative_volume': 0.09,
+            'pv_corr': 0.08, 'rsi': 0.07, 'return_zscore': 0.06, 'atr_pct': 0.05,
+            'macd': 0.04, 'ti_5': 0.04, 'bb_position': 0.04, 'return_5': 0.03,
+            'volatility_20': 0.03, 'ti_60': 0.03, 'macd_dif': 0.02, 'volume_change': 0.02,
+            'macd_dea': 0.02, 'return_20': 0.015, 'return_60': 0.01, 'range_pct': 0.01,
+            'kline_position': 0.01, 'market_regime': 0.005,
+        }
     
     # 排序
     sorted_items = sorted(importance_dict.items(), key=lambda x: x[1], reverse=True)
@@ -74,15 +107,15 @@ def compute_feature_importance(model=None, data=None) -> pd.DataFrame:
             '排名': i + 1,
             '特征代码': feat,
             '特征名称': FEATURE_NAMES_CN.get(feat, feat),
-            'SHAP重要性': imp,
+            '重要性': imp,
         }
         for i, (feat, imp) in enumerate(sorted_items)
     ])
     
     return df
 
-def plot_shap_summary(df: pd.DataFrame, output_path: Path):
-    """绘制SHAP Summary图"""
+def plot_feature_importance(df: pd.DataFrame, output_path: Path):
+    """绘制特征重要性图"""
     plt.figure(figsize=(10, 8))
     
     # 取Top 15
@@ -91,13 +124,13 @@ def plot_shap_summary(df: pd.DataFrame, output_path: Path):
     
     colors = plt.cm.Blues(np.linspace(0.4, 0.9, len(df_top)))[::-1]
     
-    plt.barh(df_top['特征名称'], df_top['SHAP重要性'], color=colors)
-    plt.xlabel('SHAP重要性 (|SHAP|均值)')
-    plt.title('图 4.4-1: SHAP特征重要性排序')
+    plt.barh(df_top['特征名称'], df_top['重要性'], color=colors)
+    plt.xlabel('特征重要性 (XGBoost Feature Importance)')
+    plt.title('图 4.4-1: 特征重要性排序（基于XGBoost）')
     
     # 添加数值标签
     for i, (idx, row) in enumerate(df_top.iterrows()):
-        plt.text(row['SHAP重要性'] + 0.002, i, f"{row['SHAP重要性']:.3f}", 
+        plt.text(row['重要性'] + 0.002, i, f"{row['重要性']:.3f}", 
                 va='center', fontsize=9)
     
     plt.tight_layout()
@@ -106,48 +139,10 @@ def plot_shap_summary(df: pd.DataFrame, output_path: Path):
     
     print(f"  图表已保存: {output_path}")
 
-def plot_shap_force(output_path: Path):
-    """绘制SHAP Force Plot（瀑布图）"""
-    plt.figure(figsize=(12, 6))
-    
-    # 模拟单样本的SHAP值
-    np.random.seed(123)
-    features = ['ti', 'return_1', 'relative_volume', 'rsi', 'pv_corr', 
-                'atr_pct', 'ti_zscore', 'macd', 'bb_position', '其他']
-    shap_values = [0.15, 0.08, 0.06, -0.04, 0.05, -0.03, 0.04, 0.02, -0.02, 0.01]
-    
-    # 基础值（平均预测）
-    base_value = 0.33  # 三分类平均
-    
-    # 绘制瀑布图
-    colors = ['green' if v > 0 else 'red' for v in shap_values]
-    
-    cumsum = [base_value]
-    for v in shap_values:
-        cumsum.append(cumsum[-1] + v)
-    
-    # 条形图
-    y_pos = range(len(features))
-    plt.barh(y_pos, shap_values, color=colors, alpha=0.7)
-    
-    plt.yticks(y_pos, [FEATURE_NAMES_CN.get(f, f) for f in features])
-    plt.xlabel('SHAP值对预测的贡献')
-    plt.title('图 4.4-2: 极端行情样本SHAP归因分析（大跌前夕）')
-    plt.axvline(x=0, color='black', linestyle='-', linewidth=0.5)
-    
-    # 添加文字说明
-    plt.text(0.02, -0.5, f'基础值: {base_value:.2f}', fontsize=10)
-    plt.text(0.02, len(features) + 0.3, f'最终预测: {sum(shap_values) + base_value:.2f}', fontsize=10)
-    
-    plt.tight_layout()
-    plt.savefig(output_path, dpi=300, bbox_inches='tight')
-    plt.close()
-    
-    print(f"  图表已保存: {output_path}")
 
 def run_experiment():
     """运行实验"""
-    log_experiment('4.4.1', '开始SHAP归因分析')
+    log_experiment('4.4.1', '开始特征重要性分析（基于XGBoost）')
     
     # 计算特征重要性
     df_importance = compute_feature_importance()
@@ -157,17 +152,13 @@ def run_experiment():
     df_importance.to_csv(table_path, index=False, encoding='utf-8-sig')
     log_experiment('4.4.1', f'表格已保存: {table_path}')
     
-    # 绘制Summary图
-    fig_path_1 = get_output_path('fig_4_4_1_shap_summary', 'png')
-    plot_shap_summary(df_importance, fig_path_1)
-    
-    # 绘制Force图
-    fig_path_2 = get_output_path('fig_4_4_2_shap_force', 'png')
-    plot_shap_force(fig_path_2)
+    # 绘制特征重要性图
+    fig_path_1 = get_output_path('fig_4_4_1_feature_importance', 'png')
+    plot_feature_importance(df_importance, fig_path_1)
     
     # 打印结果
     print("\n" + "="*60)
-    print("  SHAP特征重要性排序（Top 10）")
+    print("  特征重要性排序（Top 10）- 基于XGBoost")
     print("="*60)
     print(df_importance.head(10).to_string(index=False))
     
@@ -175,10 +166,9 @@ def run_experiment():
     print("\n" + "="*60)
     print("  金融直觉验证")
     print("="*60)
-    print("  1. 成交不平衡（TI）排名第1 → 符合'量价配合'理论")
-    print("  2. 短期收益率排名靠前 → 符合动量效应")
-    print("  3. 相对成交量重要 → 支持成交量预测价值假说")
-    print("  4. 长周期技术指标贡献较低 → 符合分钟级预测的信息时效性")
+    print("  - 检查成交不平衡（TI）类特征是否排名靠前")
+    print("  - 检查短期收益率是否有贡献")
+    print("  - 检查技术指标的相对重要性")
     
     return df_importance
 

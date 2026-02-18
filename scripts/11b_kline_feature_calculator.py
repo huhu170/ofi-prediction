@@ -67,7 +67,11 @@ ROLLING_WINDOWS = {
 PREDICTION_HORIZONS = [5, 15, 30]
 
 # 标签阈值
-LABEL_ALPHA = 0.002  # 涨跌阈值（0.2%）
+# 注意：此处alpha仅用于11b特征计算阶段的初始标签生成（保存到parquet文件）
+# 实际训练时，12b_kline_dataset_builder.py 会从 future_return 列重新计算标签
+# 使用自适应分位数法（percentile=33）使三类标签接近均衡
+# 因此此处alpha值不影响最终模型训练，仅作为parquet文件的参考标签
+LABEL_ALPHA = 0.002  # 初始阈值（0.2%），最终标签由12b自适应计算
 
 # 输出路径
 DATA_PROCESSED = Path(os.getenv("DATA_PROCESSED", "data/processed"))
