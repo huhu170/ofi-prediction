@@ -1,16 +1,18 @@
 """
-实验 4.2.2: 深度学习模型性能评估
+实验 4.2.2: 全模型性能评估（含AUC计算）
 
 对应论文:
-- 表 4.2-2: 深度学习模型性能汇总（LSTM、GRU、CNN-LSTM、Transformer、PV-Transformer）
+- 表 4.2-1 / 4.2-2: 模型性能汇总（所有9种模型 + AUC）
 
 输出:
-- table_4_2_2_deep_models.csv
+- table_4_2_2_model_comparison.csv （每只股票×每个模型的详细指标）
+- table_4_2_2_model_summary.csv   （按模型汇总的均值±标准差）
 
-修改说明: 使用已训练好的模型进行评估，而不是重新训练
+修改说明: 加载已训练模型，在测试集上计算 Accuracy / F1 / AUC
 """
 
 import sys
+import os
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -18,45 +20,63 @@ from exp_config import *
 import pandas as pd
 import numpy as np
 import pickle
-from typing import Dict, Tuple, Optional
+from typing import Dict, Optional
 
-# PyTorch
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, TensorDataset
 
-# 评估指标
-from sklearn.metrics import accuracy_score, f1_score, roc_auc_score, classification_report
+from sklearn.metrics import accuracy_score, f1_score, roc_auc_score
 
-# 添加scripts路径以导入模型
+# ============================================================
+# 安全导入 13b_kline_model_trainer（防止 exec_module 关闭 stdout）
+# ============================================================
 sys.path.insert(0, str(PROJECT_ROOT / 'scripts'))
 
-# 导入13b的模型类（用于正确加载模型权重）
-# 需要重命名导入，因为文件名以数字开头
 import importlib.util
-spec = importlib.util.spec_from_file_location("kline_model_trainer", PROJECT_ROOT / "scripts" / "13b_kline_model_trainer.py")
+
+spec = importlib.util.spec_from_file_location(
+    "kline_model_trainer",
+    PROJECT_ROOT / "scripts" / "08_model_trainer.py"
+)
 trainer_module = importlib.util.module_from_spec(spec)
 
+MODELS_IMPORTED = False
 try:
-    spec.loader.exec_module(trainer_module)
+    _orig_stdout = sys.stdout
+    _orig_stderr = sys.stderr
+    sys.stdout = open(os.devnull, 'w')
+    sys.stderr = open(os.devnull, 'w')
+    try:
+        spec.loader.exec_module(trainer_module)
+    finally:
+        sys.stdout.close()
+        sys.stderr.close()
+        sys.stdout = _orig_stdout
+        sys.stderr = _orig_stderr
+
     LSTMBaseline = trainer_module.LSTMBaseline
     GRUBaseline = trainer_module.GRUBaseline
     CNNLSTMBaseline = trainer_module.CNNLSTMBaseline
     TransformerBaseline = trainer_module.TransformerBaseline
     PVTransformer = trainer_module.PVTransformer
+    MultiScalePVTransformer = trainer_module.MultiScalePVTransformer
     SklearnModelWrapper = trainer_module.SklearnModelWrapper
     create_model = trainer_module.create_model
     PRICE_RELATED = trainer_module.PRICE_RELATED
     VOLUME_RELATED = trainer_module.VOLUME_RELATED
+    is_multi_scale_dataset = trainer_module.is_multi_scale_dataset
+    create_multi_scale_dataloaders = trainer_module.create_multi_scale_dataloaders
     MODELS_IMPORTED = True
+    print("[OK] 模型类导入成功")
 except Exception as e:
-    print(f"Warning: Could not import models from 13b: {e}")
-    MODELS_IMPORTED = False
+    sys.stdout = _orig_stdout
+    sys.stderr = _orig_stderr
+    print(f"[ERROR] 模型导入失败: {e}")
 
-# 模型名称映射（脚本名 -> 论文名）
 MODEL_NAME_MAP = {
     'lstm': 'LSTM',
-    'gru': 'GRU', 
+    'gru': 'GRU',
     'cnn_lstm': 'CNN-LSTM',
     'transformer': 'Transformer',
     'pv_transformer': 'PV-Transformer',
@@ -67,10 +87,20 @@ MODEL_NAME_MAP = {
 }
 
 
+# ============================================================
+# 数据加载
+# ============================================================
+
 def load_dataset(code: str, ktype: str = '1M') -> Optional[Dict]:
-    """加载数据集"""
     dataset_path = DATA_PROCESSED.parent / 'datasets' / f"dataset_{code.replace('.', '_')}_{ktype}.pkl"
-    
+    if dataset_path.exists():
+        with open(dataset_path, 'rb') as f:
+            return pickle.load(f)
+    return None
+
+
+def load_multi_scale_dataset(code: str) -> Optional[Dict]:
+    dataset_path = DATA_PROCESSED.parent / 'datasets' / f"dataset_{code.replace('.', '_')}_multi_scale.pkl"
     if dataset_path.exists():
         with open(dataset_path, 'rb') as f:
             return pickle.load(f)
@@ -78,307 +108,357 @@ def load_dataset(code: str, ktype: str = '1M') -> Optional[Dict]:
 
 
 def create_test_dataloader(dataset: Dict, batch_size: int = 64) -> Optional[DataLoader]:
-    """只创建测试集DataLoader"""
     if 'test' not in dataset:
         return None
-    
+
     ds = dataset['test']
     if hasattr(ds, 'X'):
         X, y = ds.X, ds.y
     else:
         X, y = ds
-    
+
     if isinstance(y, torch.Tensor):
         y_np = y.numpy()
     else:
         y_np = np.array(y)
-    
-    # 确保标签从0开始
+
     if y_np.min() == -1:
         y_np = y_np + 1
-    
+
     tensor_ds = TensorDataset(
         torch.FloatTensor(X) if not isinstance(X, torch.Tensor) else X,
         torch.LongTensor(y_np)
     )
-    
     return DataLoader(tensor_ds, batch_size=batch_size, shuffle=False)
 
 
+# ============================================================
+# 模型加载
+# ============================================================
+
 def load_pytorch_model(model_path: Path, device: torch.device):
-    """加载PyTorch模型"""
     if not model_path.exists():
         return None
-    
-    checkpoint = torch.load(model_path, map_location=device)
-    return checkpoint
+    return torch.load(model_path, map_location=device)
 
 
 def load_sklearn_model(model_path: Path):
-    """加载sklearn模型"""
     if not model_path.exists():
         return None
-    
     with open(model_path, 'rb') as f:
         return pickle.load(f)
 
 
-def evaluate_pytorch_model(model: nn.Module, dataloader: DataLoader, device: torch.device, 
-                           model_name: str = '') -> Dict:
-    """评估PyTorch模型"""
-    model.eval()
-    all_preds = []
-    all_labels = []
-    all_probs = []
-    
-    # 特征维度信息
-    price_dim = 14  # PRICE_RELATED 特征数
-    
-    with torch.no_grad():
-        for batch in dataloader:
-            X, y = batch[0].to(device), batch[1].to(device)
-            
-            # 根据模型类型处理输入
-            if hasattr(model, 'model_name') and 'pv' in model.model_name:
-                # PV-Transformer需要分离价格和成交量特征
-                price_x = X[:, :, :price_dim]
-                volume_x = X[:, :, price_dim:]
-                logits = model(price_x, volume_x)
-            else:
-                logits = model(X)
-            
-            probs = torch.softmax(logits, dim=1)
-            preds = logits.argmax(dim=1)
-            
-            all_preds.extend(preds.cpu().numpy())
-            all_labels.extend(y.cpu().numpy())
-            all_probs.extend(probs.cpu().numpy())
-    
-    all_preds = np.array(all_preds)
-    all_labels = np.array(all_labels)
-    all_probs = np.array(all_probs)
-    
+def recreate_model(model_name: str, input_dim: int, seq_len: int, **kwargs):
+    if not MODELS_IMPORTED:
+        return None
+    try:
+        return create_model(model_name, input_dim=input_dim, seq_len=seq_len, **kwargs)
+    except Exception as e:
+        print(f"  [ERROR] 创建模型 {model_name} 失败: {e}")
+        return None
+
+
+# ============================================================
+# 评估函数
+# ============================================================
+
+def compute_metrics(all_labels: np.ndarray, all_preds: np.ndarray,
+                    all_probs: np.ndarray) -> Dict:
     metrics = {
         'accuracy': accuracy_score(all_labels, all_preds),
         'f1_macro': f1_score(all_labels, all_preds, average='macro'),
         'f1_weighted': f1_score(all_labels, all_preds, average='weighted'),
     }
-    
-    # AUC（多分类）
     try:
         if len(np.unique(all_labels)) > 2:
             metrics['auc'] = roc_auc_score(all_labels, all_probs, multi_class='ovr')
         else:
             metrics['auc'] = roc_auc_score(all_labels, all_probs[:, 1])
-    except:
-        metrics['auc'] = 0.5
-    
+    except Exception as e:
+        print(f"    [WARN] AUC计算失败: {e}")
+        metrics['auc'] = np.nan
     return metrics
 
 
-def evaluate_sklearn_model(model, X_test: np.ndarray, y_test: np.ndarray) -> Dict:
-    """评估sklearn模型"""
-    # 展平序列数据 (N, T, F) -> (N, T*F)
+def evaluate_single_scale_model(model: nn.Module, dataloader: DataLoader,
+                                device: torch.device) -> Dict:
+    model.eval()
+    all_preds, all_labels, all_probs = [], [], []
+    price_dim = len(PRICE_RELATED)
+
+    with torch.no_grad():
+        for batch in dataloader:
+            X, y = batch[0].to(device), batch[1].to(device)
+
+            if hasattr(model, 'model_name') and 'pv' in model.model_name:
+                logits = model(X[:, :, :price_dim], X[:, :, price_dim:])
+            else:
+                logits = model(X)
+
+            probs = torch.softmax(logits, dim=1)
+            preds = logits.argmax(dim=1)
+
+            all_preds.extend(preds.cpu().numpy())
+            all_labels.extend(y.cpu().numpy())
+            all_probs.extend(probs.cpu().numpy())
+
+    return compute_metrics(np.array(all_labels), np.array(all_preds),
+                           np.array(all_probs))
+
+
+def evaluate_multi_scale_model(model: nn.Module, dataloader: DataLoader,
+                               device: torch.device) -> Dict:
+    model.eval()
+    all_preds, all_labels, all_probs = [], [], []
+    price_dim = len(PRICE_RELATED)
+
+    with torch.no_grad():
+        for batch in dataloader:
+            scale_data_raw = batch[0]
+            y = batch[1].to(device)
+            scale_data = {}
+            for scale in model.scale_names:
+                if scale in scale_data_raw:
+                    x = scale_data_raw[scale].to(device)
+                    scale_data[scale] = (x[:, :, :price_dim], x[:, :, price_dim:])
+
+            logits = model(scale_data)
+
+            probs = torch.softmax(logits, dim=1)
+            preds = logits.argmax(dim=1)
+
+            all_preds.extend(preds.cpu().numpy())
+            all_labels.extend(y.cpu().numpy())
+            all_probs.extend(probs.cpu().numpy())
+
+    return compute_metrics(np.array(all_labels), np.array(all_preds),
+                           np.array(all_probs))
+
+
+def evaluate_sklearn(model, X_test: np.ndarray, y_test: np.ndarray) -> Dict:
     if len(X_test.shape) == 3:
         X_flat = X_test.reshape(X_test.shape[0], -1)
     else:
         X_flat = X_test
-    
+
+    X_flat = np.nan_to_num(X_flat, nan=0.0, posinf=0.0, neginf=0.0)
+    X_flat = np.clip(X_flat, -1e6, 1e6)
+
     y_pred = model.predict(X_flat)
-    
+
+    all_probs = None
+    try:
+        all_probs = model.predict_proba(X_flat)
+    except:
+        pass
+
     metrics = {
         'accuracy': accuracy_score(y_test, y_pred),
         'f1_macro': f1_score(y_test, y_pred, average='macro'),
         'f1_weighted': f1_score(y_test, y_pred, average='weighted'),
     }
-    
-    # AUC
-    try:
-        y_proba = model.predict_proba(X_flat)
-        if len(np.unique(y_test)) > 2:
-            metrics['auc'] = roc_auc_score(y_test, y_proba, multi_class='ovr')
-        else:
-            metrics['auc'] = roc_auc_score(y_test, y_proba[:, 1])
-    except:
-        metrics['auc'] = 0.5
-    
+
+    if all_probs is not None:
+        try:
+            if len(np.unique(y_test)) > 2:
+                metrics['auc'] = roc_auc_score(y_test, all_probs, multi_class='ovr')
+            else:
+                metrics['auc'] = roc_auc_score(y_test, all_probs[:, 1])
+        except Exception as e:
+            print(f"    [WARN] sklearn AUC失败: {e}")
+            metrics['auc'] = np.nan
+    else:
+        metrics['auc'] = np.nan
+
     return metrics
 
 
-def recreate_model(model_name: str, input_dim: int, seq_len: int):
-    """重新创建模型结构以加载权重"""
-    if not MODELS_IMPORTED:
-        print(f"  [ERROR] 模型类未导入")
-        return None
-    
-    try:
-        return create_model(model_name, input_dim=input_dim, seq_len=seq_len)
-    except Exception as e:
-        print(f"  [ERROR] 创建模型失败: {e}")
-        return None
-
+# ============================================================
+# 主实验
+# ============================================================
 
 def run_experiment():
-    """运行实验"""
-    log_experiment('4.2.2', '开始模型性能评估（使用已训练模型）')
-    
+    if not MODELS_IMPORTED:
+        print("[FATAL] 模型类未导入，无法运行")
+        return None
+
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    log_experiment('4.2.2', f'使用设备: {device}')
-    
+    print(f"设备: {device}")
+
     results = []
-    
-    # 模型列表（PyTorch和sklearn）
-    pytorch_models = ['lstm', 'gru', 'cnn_lstm', 'transformer', 'pv_transformer']
+
+    single_scale_models = ['lstm', 'gru', 'cnn_lstm', 'transformer', 'pv_transformer']
     sklearn_models = ['logistic_regression', 'random_forest', 'xgboost']
-    
-    # 只评估有数据的股票
-    codes_to_eval = []
+
     for code, name, sector in STOCK_LIST:
-        dataset = load_dataset(code)
-        if dataset is not None:
-            codes_to_eval.append((code, name, sector))
-    
-    if not codes_to_eval:
-        log_experiment('4.2.2', '[ERROR] 没有找到任何数据集')
-        return None
-    
-    log_experiment('4.2.2', f'找到 {len(codes_to_eval)} 只股票的数据集')
-    
-    for code, name, sector in codes_to_eval:
-        log_experiment('4.2.2', f'评估 {code} {name}')
-        
-        dataset = load_dataset(code)
-        test_loader = create_test_dataloader(dataset)
-        
-        if test_loader is None:
-            continue
-        
-        # 获取维度
-        sample_X, sample_y = next(iter(test_loader))
-        seq_len, input_dim = sample_X.shape[1], sample_X.shape[2]
-        
-        # 获取测试数据（用于sklearn模型）
-        test_data = dataset['test']
-        if hasattr(test_data, 'X'):
-            X_test, y_test = test_data.X, test_data.y
-        else:
-            X_test, y_test = test_data
-        if hasattr(y_test, 'numpy'):
-            y_test = y_test.numpy()
-        y_test = np.array(y_test)
-        if y_test.min() == -1:
-            y_test = y_test + 1
-        
         code_str = code.replace('.', '_')
-        
-        # 评估PyTorch模型
-        for model_name in pytorch_models:
-            model_path = MODELS_DIR / model_name / f"model_{code_str}_1M.pt"
-            
-            if not model_path.exists():
-                log_experiment('4.2.2', f'  [SKIP] {model_name} 模型不存在')
-                continue
-            
-            log_experiment('4.2.2', f'  评估 {model_name}...')
-            
-            # 加载模型
-            checkpoint = load_pytorch_model(model_path, device)
-            if checkpoint is None:
-                continue
-            
-            # 重建模型结构
-            model = recreate_model(model_name, input_dim, seq_len)
-            if model is None:
-                continue
-            
+        print(f"\n{'='*60}")
+        print(f"  {code} {name} ({sector})")
+        print(f"{'='*60}")
+
+        # --- 单尺度深度学习模型 ---
+        dataset_1m = load_dataset(code)
+        if dataset_1m is not None:
+            test_loader = create_test_dataloader(dataset_1m)
+            if test_loader is not None:
+                sample_X, _ = next(iter(test_loader))
+                seq_len, input_dim = sample_X.shape[1], sample_X.shape[2]
+
+                for mname in single_scale_models:
+                    model_path = MODELS_DIR / mname / f"model_{code_str}_1M.pt"
+                    if not model_path.exists():
+                        print(f"  [SKIP] {mname} 模型文件不存在")
+                        continue
+
+                    try:
+                        checkpoint = load_pytorch_model(model_path, device)
+                        model = recreate_model(mname, input_dim, seq_len)
+                        if model is None:
+                            continue
+                        model.load_state_dict(checkpoint['model_state_dict'])
+                        model = model.to(device)
+
+                        metrics = evaluate_single_scale_model(model, test_loader, device)
+                        results.append({
+                            '股票代码': code, '股票名称': name,
+                            '模型': MODEL_NAME_MAP[mname],
+                            'Accuracy': metrics['accuracy'],
+                            'F1-macro': metrics['f1_macro'],
+                            'F1-weighted': metrics['f1_weighted'],
+                            'AUC': metrics['auc'],
+                        })
+                        print(f"  [OK] {mname}: Acc={metrics['accuracy']:.4f}  "
+                              f"F1={metrics['f1_macro']:.4f}  AUC={metrics['auc']:.4f}")
+                    except Exception as e:
+                        print(f"  [ERROR] {mname}: {e}")
+
+                # --- sklearn ---
+                test_data = dataset_1m['test']
+                if hasattr(test_data, 'X'):
+                    X_test, y_test = test_data.X, test_data.y
+                else:
+                    X_test, y_test = test_data
+                if hasattr(y_test, 'numpy'):
+                    y_test = y_test.numpy()
+                y_test = np.array(y_test)
+                if y_test.min() == -1:
+                    y_test = y_test + 1
+
+                for mname in sklearn_models:
+                    model_path = MODELS_DIR / mname / f"model_{code_str}_1M.pkl"
+                    if not model_path.exists():
+                        print(f"  [SKIP] {mname} 模型文件不存在")
+                        continue
+
+                    try:
+                        model = load_sklearn_model(model_path)
+                        metrics = evaluate_sklearn(model, X_test, y_test)
+                        results.append({
+                            '股票代码': code, '股票名称': name,
+                            '模型': MODEL_NAME_MAP[mname],
+                            'Accuracy': metrics['accuracy'],
+                            'F1-macro': metrics['f1_macro'],
+                            'F1-weighted': metrics['f1_weighted'],
+                            'AUC': metrics['auc'],
+                        })
+                        print(f"  [OK] {mname}: Acc={metrics['accuracy']:.4f}  "
+                              f"F1={metrics['f1_macro']:.4f}  AUC={metrics['auc']:.4f}")
+                    except Exception as e:
+                        print(f"  [ERROR] {mname}: {e}")
+            else:
+                print(f"  [SKIP] 1M数据集无test split")
+
+            del dataset_1m
+        else:
+            print(f"  [SKIP] 1M数据集不存在")
+
+        # --- multi_scale (PV-Transformer+LSF) ---
+        ms_dataset = load_multi_scale_dataset(code)
+        if ms_dataset is not None:
             try:
-                model.load_state_dict(checkpoint['model_state_dict'])
-                model = model.to(device)
-                
-                metrics = evaluate_pytorch_model(model, test_loader, device, model_name)
-                
-                results.append({
-                    '股票代码': code,
-                    '股票名称': name,
-                    '模型': MODEL_NAME_MAP.get(model_name, model_name),
-                    'Accuracy': metrics['accuracy'],
-                    'F1-macro': metrics['f1_macro'],
-                    'F1-weighted': metrics['f1_weighted'],
-                    'AUC': metrics['auc'],
-                })
+                _, _, ms_test_loader = create_multi_scale_dataloaders(ms_dataset, batch_size=64)
+                if ms_test_loader is not None:
+                    ms_model_path = MODELS_DIR / 'multi_scale' / f"model_{code_str}_1M.pt"
+                    if ms_model_path.exists():
+                        checkpoint = load_pytorch_model(ms_model_path, device)
+                        price_dim = len(PRICE_RELATED)
+                        volume_dim = len(VOLUME_RELATED)
+                        model = MultiScalePVTransformer(
+                            price_dim, volume_dim,
+                            scale_seq_lens={'1M': 60, '5M': 24, '60M': 12},
+                            num_classes=3
+                        )
+                        model.load_state_dict(checkpoint['model_state_dict'])
+                        model = model.to(device)
+
+                        metrics = evaluate_multi_scale_model(model, ms_test_loader, device)
+                        results.append({
+                            '股票代码': code, '股票名称': name,
+                            '模型': 'PV-Transformer+LSF',
+                            'Accuracy': metrics['accuracy'],
+                            'F1-macro': metrics['f1_macro'],
+                            'F1-weighted': metrics['f1_weighted'],
+                            'AUC': metrics['auc'],
+                        })
+                        print(f"  [OK] multi_scale: Acc={metrics['accuracy']:.4f}  "
+                              f"F1={metrics['f1_macro']:.4f}  AUC={metrics['auc']:.4f}")
+                    else:
+                        print(f"  [SKIP] multi_scale 模型文件不存在")
             except Exception as e:
-                log_experiment('4.2.2', f'    [ERROR] {e}')
-        
-        # 评估sklearn模型
-        for model_name in sklearn_models:
-            model_path = MODELS_DIR / model_name / f"model_{code_str}_1M.pkl"
-            
-            if not model_path.exists():
-                log_experiment('4.2.2', f'  [SKIP] {model_name} 模型不存在')
-                continue
-            
-            log_experiment('4.2.2', f'  评估 {model_name}...')
-            
-            model = load_sklearn_model(model_path)
-            if model is None:
-                continue
-            
-            try:
-                metrics = evaluate_sklearn_model(model, X_test, y_test)
-                
-                results.append({
-                    '股票代码': code,
-                    '股票名称': name,
-                    '模型': MODEL_NAME_MAP.get(model_name, model_name),
-                    'Accuracy': metrics['accuracy'],
-                    'F1-macro': metrics['f1_macro'],
-                    'F1-weighted': metrics['f1_weighted'],
-                    'AUC': metrics['auc'],
-                })
-            except Exception as e:
-                log_experiment('4.2.2', f'    [ERROR] {e}')
-    
+                print(f"  [ERROR] multi_scale: {e}")
+
+            del ms_dataset
+        else:
+            print(f"  [SKIP] multi_scale 数据集不存在")
+
     if not results:
-        log_experiment('4.2.2', '[ERROR] 没有成功评估任何模型')
+        print("\n[FATAL] 没有成功评估任何模型")
         return None
-    
-    # 汇总结果
-    df_results = pd.DataFrame(results)
-    
-    # 格式化数值
-    for col in ['Accuracy', 'F1-macro', 'F1-weighted', 'AUC']:
-        df_results[col] = df_results[col].apply(lambda x: f"{x:.4f}")
-    
-    # 保存
-    output_path = get_output_path('table_4_2_2_model_comparison', 'csv')
-    df_results.to_csv(output_path, index=False, encoding='utf-8-sig')
-    
-    log_experiment('4.2.2', f'结果已保存: {output_path}')
-    
-    print("\n" + "="*70)
-    print("  表 4.2-2: 模型性能汇总")
-    print("="*70)
-    print(df_results.to_string(index=False))
-    
-    # 生成汇总统计
-    print("\n" + "="*70)
-    print("  模型平均性能")
-    print("="*70)
-    
-    # 转回数值计算平均
-    df_numeric = df_results.copy()
-    for col in ['Accuracy', 'F1-macro', 'F1-weighted', 'AUC']:
-        df_numeric[col] = df_numeric[col].astype(float)
-    
-    summary = df_numeric.groupby('模型')[['Accuracy', 'F1-macro', 'AUC']].mean()
-    summary = summary.sort_values('F1-macro', ascending=False)
-    print(summary.round(4).to_string())
-    
-    return df_results
+
+    # --- 保存详细结果 ---
+    df = pd.DataFrame(results)
+    detail_path = get_output_path('table_4_2_2_model_comparison', 'csv')
+    df.to_csv(detail_path, index=False, encoding='utf-8-sig')
+    print(f"\n详细结果已保存: {detail_path}")
+
+    # --- 汇总统计 ---
+    summary_rows = []
+    for model_label in MODEL_NAME_MAP.values():
+        sub = df[df['模型'] == model_label]
+        if sub.empty:
+            continue
+        summary_rows.append({
+            '模型': model_label,
+            'Acc_mean': sub['Accuracy'].mean(),
+            'Acc_std': sub['Accuracy'].std(),
+            'F1_mean': sub['F1-macro'].mean(),
+            'F1_std': sub['F1-macro'].std(),
+            'AUC_mean': sub['AUC'].mean(),
+            'AUC_std': sub['AUC'].std(),
+            'n_stocks': len(sub),
+        })
+
+    df_summary = pd.DataFrame(summary_rows)
+    df_summary = df_summary.sort_values('F1_mean', ascending=False)
+
+    summary_path = get_output_path('table_4_2_2_model_summary', 'csv')
+    df_summary.to_csv(summary_path, index=False, encoding='utf-8-sig')
+    print(f"汇总结果已保存: {summary_path}")
+
+    print("\n" + "=" * 70)
+    print("  模型性能汇总（均值 ± 标准差）")
+    print("=" * 70)
+    for _, row in df_summary.iterrows():
+        print(f"  {row['模型']:24s}  Acc={row['Acc_mean']:.4f}±{row['Acc_std']:.4f}  "
+              f"F1={row['F1_mean']:.4f}±{row['F1_std']:.4f}  "
+              f"AUC={row['AUC_mean']:.4f}±{row['AUC_std']:.4f}  "
+              f"(n={int(row['n_stocks'])})")
+
+    return df_summary
 
 
 def main():
-    """主函数"""
     set_seed()
     return run_experiment()
 

@@ -1,0 +1,10 @@
+﻿model,avg_return_pct,avg_sharpe_standard,n_stocks
+cnn_lstm,-1.7000000476837158,-0.21,10
+lstm,6.510000228881836,0.49,10
+gru,7.159999847412109,0.48,10
+transformer,-6.730000019073486,-0.71,10
+pv_transformer,10.109999656677246,1.01,10
+random_forest,-2.25,-0.24,10
+logistic_regression,-5.659999847412109,-0.88,10
+xgboost,-1.5299999713897705,0.0,10
+buyhold,0.46,-0.0,10

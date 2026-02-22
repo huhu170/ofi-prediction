@@ -1,0 +1,12 @@
+﻿model,type,avg_return_pct,avg_max_dd_pct,sharpe
+GRU,DL,28.15,10.78,2.26
+LSTM,DL,22.45,12.26,1.93
+CNN-LSTM,DL,16.69,15.29,1.57
+PV-Transformer,DL,10.31,16.14,1.01
+XGBoost,ML,8.11,16.69,0.65
+Random Forest,ML,7.24,13.75,0.23
+Multi-Scale PVT,DL,5.12,15.23,0.2
+Transformer,DL,-0.76,18.1,0.15
+Logistic Regression,ML,-0.46,16.41,0.01
+Buy & Hold,Base,0.06,20.46,-0.01
+ARIMA,Stat,-53.97,55.83,-8.35

@@ -1,2 +1,2 @@
-﻿model,n_stocks,avg_return_pct,avg_max_dd_pct,long_trades,long_wins,long_winrate,short_trades,short_wins,short_winrate,total_trades,total_wins,total_winrate
-arima,10,-51.64,53.49,22285,7130,32.0,22282,7581,34.0,44567,14711,33.0
+﻿model,n_stocks,avg_return_pct,avg_max_dd_pct,avg_sharpe,long_trades,long_wins,long_winrate,short_trades,short_wins,short_winrate,total_trades,total_wins,total_winrate
+arima,10,-53.97,55.83,-8.35,22225,7082,31.9,22300,7531,33.8,44525,14613,32.8

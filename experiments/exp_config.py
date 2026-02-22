@@ -290,7 +290,7 @@ EXPERIMENT_SCRIPTS = {
     '4.3.4': ('cost_sensitivity_real.py', '交易成本敏感性（真实回测）'),
 
     # 4.4节 可解释性与稳健性
-    '4.4.1': ('exp_4_4_1_shap_analysis.py', 'XGBoost特征重要性分析'),
+    '4.4.1': ('exp_4_4_1_shap_analysis.py', '双模型SHAP归因分析'),
     '4.4.5': ('exp_4_4_5_granger_causality.py', 'Granger因果检验（真实数据）'),
     '4.4.2': ('exp_4_4_2_regime_split.py', '市场状态异质性检验（真实数据）'),
 }

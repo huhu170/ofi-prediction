@@ -31,7 +31,7 @@ def _get_trainer_module():
     global _trainer_module
     if _trainer_module is None:
         spec = importlib.util.spec_from_file_location(
-            "trainer", Path(__file__).parent.parent / "scripts" / "13b_kline_model_trainer.py")
+            "trainer", Path(__file__).parent.parent / "scripts" / "08_model_trainer.py")
         _trainer_module = importlib.util.module_from_spec(spec)
         
         # 临时保存stdout
@@ -87,8 +87,26 @@ STOCK_LIST = [
     ('HK.00388', 'HKEX'),
 ]
 
+BARS_PER_DAY = 78  # 390 min / DECISION_INTERVAL(5 min)
+
 # 检测GPU
 DEVICE = 'cuda' if USE_GPU and torch.cuda.is_available() else 'cpu'
+
+
+def compute_sharpe(equity_history, bars_per_day=BARS_PER_DAY):
+    """从5分钟级净值曲线计算年化夏普比率 (risk-free = 0)"""
+    eq = np.array(equity_history)
+    if len(eq) < bars_per_day * 5:
+        return 0.0
+    daily_eq = [eq[0]]
+    for d in range(bars_per_day, len(eq), bars_per_day):
+        daily_eq.append(eq[min(d, len(eq) - 1)])
+    daily_eq = np.array(daily_eq)
+    daily_returns = np.diff(daily_eq) / daily_eq[:-1]
+    daily_returns = daily_returns[np.isfinite(daily_returns)]
+    if len(daily_returns) < 10 or np.std(daily_returns, ddof=1) == 0:
+        return 0.0
+    return (np.mean(daily_returns) / np.std(daily_returns, ddof=1)) * np.sqrt(252)
 
 
 def log(msg):
@@ -99,33 +117,36 @@ def log(msg):
         pass
 
 
-def get_db_connection():
-    import psycopg2
-    return psycopg2.connect(
-        host="127.0.0.1", port=5433,
-        database="futu_ofi", user="postgres", password="ofi123456"
-    )
+DATA_DIR = PROJECT_ROOT / 'data' / 'processed'
 
 
 def fetch_data(code: str, n_samples: int = N_SAMPLES):
-    """获取数据，返回df和日期范围"""
-    conn = get_db_connection()
-    query = f"""
-    SELECT ts, open_price as open, high_price as high, 
-           low_price as low, close_price as close, volume
-    FROM kline WHERE code = '{code}' AND ktype = 'K_1M'
-    ORDER BY ts DESC LIMIT {n_samples}
-    """
-    df = pd.read_sql(query, conn)
-    conn.close()
-    
+    """从本地parquet文件获取K线数据（原DB版已替换）"""
+    code_dir = code.replace('.', '_')
+    parquet_path = DATA_DIR / code_dir / 'kline_cleaned_1M.parquet'
+    if not parquet_path.exists():
+        log(f"    [WARN] {parquet_path} not found")
+        return None, None, None
+    df = pd.read_parquet(parquet_path)
+    col_map = {}
+    for c in df.columns:
+        cl = c.lower()
+        if cl in ('open_price',): col_map[c] = 'open'
+        elif cl in ('high_price',): col_map[c] = 'high'
+        elif cl in ('low_price',): col_map[c] = 'low'
+        elif cl in ('close_price',): col_map[c] = 'close'
+        elif cl in ('turnover_vol',): col_map[c] = 'volume'
+    if col_map:
+        df = df.rename(columns=col_map)
+    if 'ts' in df.columns:
+        df = df.sort_values('ts').reset_index(drop=True)
+    elif 'time_key' in df.columns:
+        df = df.rename(columns={'time_key': 'ts'}).sort_values('ts').reset_index(drop=True)
+    df = df.tail(n_samples).reset_index(drop=True)
     if df.empty:
         return None, None, None
-    
-    df = df.sort_values('ts').reset_index(drop=True)
-    start_date = df['ts'].iloc[0]
-    end_date = df['ts'].iloc[-1]
-    
+    start_date = df.iloc[0].get('ts', df.index[0])
+    end_date = df.iloc[-1].get('ts', df.index[-1])
     return df, start_date, end_date
 
 
@@ -345,6 +366,7 @@ def run_backtest(predictions, probs, prices_seq):
         'total_trades': total_trades,
         'total_wins': total_wins,
         'total_winrate': total_wins / max(total_trades, 1) * 100,
+        'equity_history': equity_arr.tolist(),
     }
 
 
@@ -468,15 +490,20 @@ def backtest_single_stock(model_name, code, model_map):
             result = run_backtest(preds, probs, prices)
             result['start_date'] = str(start_date)[:10]
             result['end_date'] = str(end_date)[:10]
+            result['sharpe'] = round(compute_sharpe(result['equity_history']), 2)
             return result
         
         # Buy&Hold
         if model_name == 'buyhold':
-            start_p = prices[0, 0]
-            end_p = prices[-1, 0]
+            all_prices = prices[:, 0]
+            bh_equity = 1_000_000 * all_prices / all_prices[0]
+            bh_peak = np.maximum.accumulate(bh_equity)
+            bh_dd = np.max((bh_peak - bh_equity) / bh_peak) * 100
+            bh_sharpe = round(compute_sharpe(bh_equity.tolist()), 2)
             return {
-                'total_return': (end_p - start_p) / start_p * 100,
-                'max_drawdown': 0,
+                'total_return': (all_prices[-1] - all_prices[0]) / all_prices[0] * 100,
+                'max_drawdown': bh_dd,
+                'sharpe': bh_sharpe,
                 'long_trades': 0, 'long_wins': 0, 'long_winrate': 0,
                 'short_trades': 0, 'short_wins': 0, 'short_winrate': 0,
                 'total_trades': 0, 'total_wins': 0, 'total_winrate': 0,
@@ -506,6 +533,7 @@ def backtest_single_stock(model_name, code, model_map):
         result = run_backtest(preds, probs, prices)
         result['start_date'] = str(start_date)[:10]
         result['end_date'] = str(end_date)[:10]
+        result['sharpe'] = round(compute_sharpe(result['equity_history']), 2)
         
         del X, prices, preds, probs
         gc.collect()
@@ -573,6 +601,7 @@ def main():
                 'end_date': result['end_date'],
                 'return_pct': round(result['total_return'], 2),
                 'max_dd_pct': round(result['max_drawdown'], 2),
+                'sharpe': result.get('sharpe', 0.0),
                 'long_trades': result['long_trades'],
                 'long_wins': result['long_wins'],
                 'long_winrate': round(result['long_winrate'], 1),
@@ -592,6 +621,7 @@ def main():
         # 计算汇总
         avg_return = df['return_pct'].mean()
         avg_dd = df['max_dd_pct'].mean()
+        avg_sharpe = df['sharpe'].mean()
         total_long = df['long_trades'].sum()
         total_long_wins = df['long_wins'].sum()
         total_short = df['short_trades'].sum()
@@ -604,6 +634,7 @@ def main():
         log("=" * 70)
         log(f"  Avg Return: {avg_return:.2f}%")
         log(f"  Avg MaxDD: {avg_dd:.2f}%")
+        log(f"  Avg Sharpe: {avg_sharpe:.2f}")
         log(f"  Long: {total_long} trades, {total_long_wins}/{total_long} wins ({total_long_wins/max(total_long,1)*100:.1f}%)")
         log(f"  Short: {total_short} trades, {total_short_wins}/{total_short} wins ({total_short_wins/max(total_short,1)*100:.1f}%)")
         log(f"  Total: {total_all} trades, {total_all_wins}/{total_all} wins ({total_all_wins/max(total_all,1)*100:.1f}%)")
@@ -617,6 +648,7 @@ def main():
             'n_stocks': len(all_results),
             'avg_return_pct': round(avg_return, 2),
             'avg_max_dd_pct': round(avg_dd, 2),
+            'avg_sharpe': round(avg_sharpe, 2),
             'long_trades': total_long,
             'long_wins': total_long_wins,
             'long_winrate': round(total_long_wins/max(total_long,1)*100, 1),

@@ -1,0 +1,11 @@
+﻿comparison,metric,model_a_mean,model_b_mean,wins,W_stat,p_value,significant
+DL最优 vs ML最优,AUC,0.6240,0.4974,10/10,55.0,0.0010,Yes
+DL最优 vs ML最优,F1-macro,0.3247,0.2291,8/10,49.0,0.0137,Yes
+CNN-LSTM vs RF,AUC,0.6240,0.4982,10/10,55.0,0.0010,Yes
+CNN-LSTM vs RF,F1-macro,0.3247,0.1763,8/10,49.0,0.0137,Yes
+LSTM vs XGBoost,AUC,0.6262,0.4974,10/10,55.0,0.0010,Yes
+LSTM vs XGBoost,F1-macro,0.3209,0.2291,8/10,48.0,0.0186,Yes
+GRU vs XGBoost,AUC,0.6300,0.4974,10/10,55.0,0.0010,Yes
+GRU vs XGBoost,F1-macro,0.3203,0.2291,8/10,47.0,0.0244,Yes
+Transformer vs XGBoost,AUC,0.6146,0.4974,10/10,55.0,0.0010,Yes
+Transformer vs XGBoost,F1-macro,0.2989,0.2291,6/10,43.0,0.0654,No

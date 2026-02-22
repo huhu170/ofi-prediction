@@ -41,5 +41,10 @@ data/datasets/*
 !data/**/.gitkeep
 *.parquet
 
+# Word temp files
+~$*.docx
 
-
+# Intermediate build files
+paper_preprocessed.md
+paper_raw.docx
+appendix_raw.docx

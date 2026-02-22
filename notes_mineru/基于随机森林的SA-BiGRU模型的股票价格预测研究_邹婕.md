@@ -3,9 +3,9 @@
 ## 1）元数据卡（Metadata Card）
 - 标题：基于随机森林的SA-BiGRU模型的股票价格预测研究
 - 作者：邹婕
-- 年份：【未核验】
-- 期刊/会议：【未核验】
-- DOI/URL：【未核验】
+- 年份：2023
+- 期刊/会议：《中国物价》第 11 期
+- DOI/URL：http://dianda.cqvip.com/Qikan/Article/Detail?from=Qikan_Article_Detail&id=7110982603
 - 适配章节（映射到论文大纲，写 1–3 个）：第2章-模型建立、第3章-实证分析、第4章-结语
 - 一句话可用结论（必须含证据编号）：RF-SA-BiGRU模型在顺鑫农业股价预测中RMSE为1.742，优于GRU、BiGRU等对比模型（依据E8）。
 - 可复用证据（列出最关键 3–5 条 E 编号）：E1、E2、E3、E5、E8

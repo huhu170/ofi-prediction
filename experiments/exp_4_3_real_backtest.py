@@ -34,7 +34,7 @@ try:
     import importlib.util
     spec = importlib.util.spec_from_file_location(
         "kline_model_trainer", 
-        PROJECT_ROOT / "scripts" / "13b_kline_model_trainer.py"
+        PROJECT_ROOT / "scripts" / "08_model_trainer.py"
     )
     trainer_module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(trainer_module)
